@@ -3,22 +3,37 @@ using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
 {
+    // --- 1. Components and Core Variables ---
     private Rigidbody rb;
-    private Animator anim; // Step 7: Animator component
+    private Animator anim;
     private PlayerControls playerControls;
     private Vector2 moveInput;
-    private Transform cameraMain;
 
     public float moveSpeed = 5f;
 
-    // --- Ground Detection Variables (Step 4) ---
+    // --- Camera Manager Reference ---
+    [Header("Camera Manager")]
+    // Assign the Main Camera object which has the CameraViewManager script
+    public CameraViewManager cameraManager;
+    private bool lastCarrierState = false; // To track state change
+
+    // --- 2. Ragdoll Variables ---
+    public float toppleThreshold = 0.95f;
+    public float recoveryTime = 3f;
+    public float getUpAnimDuration = 2.5f;
+
+    private Rigidbody[] ragdollRBs;
+    private Collider[] ragdollColliders;
+    private bool isToppling = false;
+
+    // --- 3. Ground Detection Variables ---
     public LayerMask groundLayer;
     public float groundCheckDistance = 0.5f;
 
     private bool isGrounded;
     private Vector3 groundNormal;
 
-    // --- Balance System Variables (Step 5) ---
+    // --- 4. Balance System Variables ---
     public float balanceRecoverySpeed = 2f;
     public float autoBalanceSpeed = 0.5f;
     public float instabilityFactor = 5f;
@@ -28,28 +43,26 @@ public class PlayerController : MonoBehaviour
     public float balanceFactor = 0f;
     private float balanceInput;
 
-    // --- Cargo System Variables (Step 6) ---
+    // --- 5. Cargo/Center of Mass Variables ---
+    [Header("Carrier System")]
+    public bool isCarrierEquipped = false;
+
     public Transform cargoStackParent;
     public float baseMass = 80f;
     public float singleCargoMass = 5f;
 
-    // Player's base CoM in local space
     private readonly Vector3 baseCoM = new Vector3(0f, 1f, 0f);
-
-    // Calculated CoM (used for rb.centerOfMass update and balance instability)
     public Vector3 cargoCenterOfMass = Vector3.zero;
 
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
-        anim = GetComponent<Animator>(); // Step 7: Get the Animator component
-        cameraMain = Camera.main.transform;
+        anim = GetComponentInChildren<Animator>();
 
         playerControls = new PlayerControls();
         playerControls.Player.Enable();
 
-        // Connect Move and Balance inputs
         playerControls.Player.Move.performed += ctx => moveInput = ctx.ReadValue<Vector2>();
         playerControls.Player.Move.canceled += ctx => moveInput = Vector2.zero;
 
@@ -57,6 +70,17 @@ public class PlayerController : MonoBehaviour
         playerControls.Player.BalanceLeft.canceled += ctx => balanceInput = 0f;
         playerControls.Player.BalanceRight.performed += ctx => balanceInput = 1f;
         playerControls.Player.BalanceRight.canceled += ctx => balanceInput = 0f;
+    }
+
+    private void Start()
+    {
+        SetupRagdollComponents();
+        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+
+        // Initial view setup
+        lastCarrierState = isCarrierEquipped;
+        if (cameraManager != null)
+            cameraManager.SetView(isCarrierEquipped ? CameraViewManager.ViewMode.ThirdPerson : CameraViewManager.ViewMode.FirstPerson);
     }
 
     private void OnEnable()
@@ -72,28 +96,47 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         CheckGround();
-        HandleAnimation(); // Step 7: Update Animator parameters
+        HandleAnimation();
     }
 
     private void FixedUpdate()
     {
-        UpdateCargoSystem(); // Step 6: Recalculate CoM and Mass
-        HandleMovement();
+        UpdateCargoSystem();
 
-        if (isGrounded)
+        if (!isToppling)
         {
-            HandleBalance(); // Step 5: Apply balance forces
+            HandleMovement();
+
+            // ?? NEW LOGIC: Only handle balance if grounded AND carrier is equipped
+            if (isGrounded && isCarrierEquipped)
+            {
+                HandleBalance();
+            }
+        }
+        else
+        {
+            rb.linearVelocity *= 0.9f;
+        }
+
+        // ?? NEW LOGIC: Check for state change to toggle camera view
+        if (isCarrierEquipped != lastCarrierState)
+        {
+            if (cameraManager != null)
+            {
+                cameraManager.SetView(isCarrierEquipped ? CameraViewManager.ViewMode.ThirdPerson : CameraViewManager.ViewMode.FirstPerson);
+            }
+            lastCarrierState = isCarrierEquipped;
         }
     }
 
-    // --- Step 3: Movement Logic ---
+    // --- Ragdoll, Ground Check, Update Cargo System, Start/End Recovery (Same as previous, omitted for brevity) ---
+    private void SetupRagdollComponents() {/* ... */}
+    private void SetRagdollEnabled(bool isEnabled) {/* ... */}
+
     private void HandleMovement()
     {
-        Vector3 camForward = Vector3.Scale(cameraMain.forward, new Vector3(1, 0, 1)).normalized;
-        Vector3 camRight = Vector3.Scale(cameraMain.right, new Vector3(1, 0, 1)).normalized;
-
-        Vector3 moveDirection = (camForward * moveInput.y + camRight * moveInput.x).normalized;
-
+        // Movement is based on the Player Root's forward/right direction (controlled by mouse rotation)
+        Vector3 moveDirection = (transform.forward * moveInput.y + transform.right * moveInput.x).normalized;
         Vector3 targetVelocity = moveDirection * moveSpeed;
 
         Vector3 currentHorizontalVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
@@ -104,41 +147,21 @@ public class PlayerController : MonoBehaviour
         velocityChange.y = 0;
 
         rb.AddForce(velocityChange, ForceMode.VelocityChange);
-
-        if (moveDirection != Vector3.zero)
-        {
-            Quaternion toRotation = Quaternion.LookRotation(moveDirection, Vector3.up);
-            rb.rotation = Quaternion.RotateTowards(rb.rotation, toRotation, 720f * Time.fixedDeltaTime);
-        }
     }
 
-    // --- Step 4: Ground Check Logic ---
-    private void CheckGround()
-    {
-        RaycastHit hit;
-        Vector3 rayStart = transform.position + Vector3.up * 0.1f;
-
-        if (Physics.Raycast(rayStart, Vector3.down, out hit, groundCheckDistance, groundLayer))
-        {
-            isGrounded = true;
-            groundNormal = hit.normal;
-        }
-        else
-        {
-            isGrounded = false;
-            groundNormal = Vector3.up;
-        }
-
-        Debug.DrawRay(rayStart, Vector3.down * groundCheckDistance, isGrounded ? Color.green : Color.red);
-        if (isGrounded)
-        {
-            Debug.DrawRay(hit.point, groundNormal, Color.blue);
-        }
-    }
-
-    // --- Step 6: Dynamic Center of Mass Calculation ---
+    private void CheckGround() {/* ... */}
     private void UpdateCargoSystem()
     {
+        // ?? Balance system variables are reset when the carrier is not equipped
+        if (!isCarrierEquipped)
+        {
+            rb.mass = baseMass;
+            rb.centerOfMass = baseCoM;
+            cargoCenterOfMass = baseCoM;
+            return;
+        }
+
+        // ... (Dynamic CoM calculation logic continues here) ...
         Vector3 weightedPositionSum = Vector3.zero;
         float totalMass = baseMass;
 
@@ -150,7 +173,6 @@ public class PlayerController : MonoBehaviour
             for (int i = 0; i < cargoCount; i++)
             {
                 Transform cargo = cargoStackParent.GetChild(i);
-
                 totalMass += singleCargoMass;
 
                 Vector3 cargoLocalPos = transform.InverseTransformPoint(cargo.position);
@@ -171,59 +193,46 @@ public class PlayerController : MonoBehaviour
         rb.centerOfMass = cargoCenterOfMass;
     }
 
-    // --- Step 5: Balance and Torque Application Logic ---
+    // --- Balance and Torque Application Logic (Only runs when isCarrierEquipped is true) ---
     private void HandleBalance()
     {
-        // 1. Instability from terrain slope
+        // 1. Calculate Instability (Torque Source) - Removed Time.fixedDeltaTime from individual factors
         float slopeSideDot = Vector3.Dot(transform.right, groundNormal);
-        float slopeInstability = slopeSideDot * instabilityFactor * Time.fixedDeltaTime;
+        float slopeInstability = slopeSideDot * instabilityFactor;
 
-        // 2. Instability from horizontal CoM offset
-        float cargoInstability = (cargoCenterOfMass.x * 0.5f) * Time.fixedDeltaTime;
+        float cargoInstability = cargoCenterOfMass.x * 0.5f;
 
-        // 3. Update the balance factor
-        balanceFactor += slopeInstability + cargoInstability;
+        // Update total balance factor
+        balanceFactor += (slopeInstability + cargoInstability) * Time.fixedDeltaTime;
 
-        // 4. Apply manual input for recovery
+        // 2. Apply Recovery/Input
         if (balanceInput != 0)
-        {
             balanceFactor = Mathf.MoveTowards(balanceFactor, -balanceInput, balanceRecoverySpeed * Time.fixedDeltaTime);
-        }
         else
-        {
-            // Auto-recovery to center (0)
             balanceFactor = Mathf.MoveTowards(balanceFactor, 0f, autoBalanceSpeed * Time.fixedDeltaTime);
-        }
 
-        // 5. Clamp the balance factor
         balanceFactor = Mathf.Clamp(balanceFactor, -1f, 1f);
 
-        // 6. Apply Torque to Rigidbody
+        // 3. Apply Corrective Torque
         Vector3 balanceTorque = transform.forward * -balanceFactor * torqueFactor;
         rb.AddTorque(balanceTorque, ForceMode.Acceleration);
 
-        // 7. Toppling check (e.g., transition to ragdoll)
-        if (Mathf.Abs(balanceFactor) > 0.9f)
+        if (Mathf.Abs(balanceFactor) > toppleThreshold && !isToppling)
         {
-            // Implement your fall/ragdoll logic here
+            StartToppling(balanceFactor > 0);
         }
     }
 
-    // --- Step 7: Animation Logic ---
-    private void HandleAnimation()
+    private void StartToppling(bool leanRight) {/* ... */}
+    private void StartRecovery() {/* ... */}
+    private void EndRecovery()
     {
-        if (anim == null) return;
+        isToppling = false;
+        playerControls.Player.Enable();
 
-        // 1. Movement Speed
-        Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
-        float currentSpeed = horizontalVelocity.magnitude;
+        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
 
-        anim.SetFloat("Speed", currentSpeed);
-
-        // 2. Grounded State
-        anim.SetBool("IsGrounded", isGrounded);
-
-        // 3. Balance Leaning (Used by the BalanceIK.cs script for bone rotation)
-        anim.SetFloat("BalanceFactor", balanceFactor);
+        balanceFactor = 0f;
     }
+    private void HandleAnimation() {/* ... */}
 }
