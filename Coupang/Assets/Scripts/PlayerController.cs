@@ -1,238 +1,131 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
+
+[RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
-    // --- 1. Components and Core Variables ---
-    private Rigidbody rb;
-    private Animator anim;
-    private PlayerControls playerControls;
-    private Vector2 moveInput;
-
-    public float moveSpeed = 5f;
-
-    // --- Camera Manager Reference ---
-    [Header("Camera Manager")]
-    // Assign the Main Camera object which has the CameraViewManager script
-    public CameraViewManager cameraManager;
-    private bool lastCarrierState = false; // To track state change
-
-    // --- 2. Ragdoll Variables ---
-    public float toppleThreshold = 0.95f;
-    public float recoveryTime = 3f;
-    public float getUpAnimDuration = 2.5f;
-
-    private Rigidbody[] ragdollRBs;
-    private Collider[] ragdollColliders;
-    private bool isToppling = false;
-
-    // --- 3. Ground Detection Variables ---
-    public LayerMask groundLayer;
-    public float groundCheckDistance = 0.5f;
-
-    private bool isGrounded;
-    private Vector3 groundNormal;
-
-    // --- 4. Balance System Variables ---
-    public float balanceRecoverySpeed = 2f;
-    public float autoBalanceSpeed = 0.5f;
-    public float instabilityFactor = 5f;
-    public float torqueFactor = 50f;
-
-    [HideInInspector]
-    public float balanceFactor = 0f;
-    private float balanceInput;
-
-    // --- 5. Cargo/Center of Mass Variables ---
-    [Header("Carrier System")]
-    public bool isCarrierEquipped = false;
-
-    public Transform cargoStackParent;
-    public float baseMass = 80f;
-    public float singleCargoMass = 5f;
-
-    private readonly Vector3 baseCoM = new Vector3(0f, 1f, 0f);
-    public Vector3 cargoCenterOfMass = Vector3.zero;
+    [Header("Movement")]
+    public float walkSpeed = 4f;
+    public float sprintSpeed = 7f;
+    public float jumpForce = 5f;
+    public float gravity = -19.62f; // -9.81 * 2
 
 
-    private void Awake()
+
+    [Header("Interaction")]
+    public float interactDistance = 3f;
+    public LayerMask interactMask;
+
+
+    [Header("Refs")]
+    public CameraSwitcher cameraSwitcher;
+    public InventorySystem inventory;
+    public CarrierController carrier;
+    public Transform dropOrigin; // 플레이어 앞 위치
+
+
+    private CharacterController controller;
+    private float yaw, pitch;
+    private float verticalVel;
+    void Awake()
     {
-        rb = GetComponent<Rigidbody>();
-        anim = GetComponentInChildren<Animator>();
-
-        playerControls = new PlayerControls();
-        playerControls.Player.Enable();
-
-        playerControls.Player.Move.performed += ctx => moveInput = ctx.ReadValue<Vector2>();
-        playerControls.Player.Move.canceled += ctx => moveInput = Vector2.zero;
-
-        playerControls.Player.BalanceLeft.performed += ctx => balanceInput = -1f;
-        playerControls.Player.BalanceLeft.canceled += ctx => balanceInput = 0f;
-        playerControls.Player.BalanceRight.performed += ctx => balanceInput = 1f;
-        playerControls.Player.BalanceRight.canceled += ctx => balanceInput = 0f;
+        controller = GetComponent<CharacterController>();
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
 
-    private void Start()
-    {
-        SetupRagdollComponents();
-        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
 
-        // Initial view setup
-        lastCarrierState = isCarrierEquipped;
-        if (cameraManager != null)
-            cameraManager.SetView(isCarrierEquipped ? CameraViewManager.ViewMode.ThirdPerson : CameraViewManager.ViewMode.FirstPerson);
+    void Update()
+    {
+        Move();
+        HandleHotbar();
+        HandleActions();
     }
 
-    private void OnEnable()
+    void Move()
     {
-        playerControls.Player.Enable();
+        bool grounded = controller.isGrounded;
+        float h = Input.GetAxisRaw("Horizontal");
+        float v = Input.GetAxisRaw("Vertical");
+        Vector3 move = (transform.right * h + transform.forward * v).normalized;
+        float speed = Input.GetKey(KeyCode.LeftShift) ? sprintSpeed : walkSpeed;
+        controller.Move(move * speed * Time.deltaTime);
+
+
+        if (grounded && verticalVel < 0) verticalVel = -2f;
+        if (Input.GetKeyDown(KeyCode.Space) && grounded) verticalVel = jumpForce;
+        verticalVel += gravity * Time.deltaTime;
+        controller.Move(Vector3.up * verticalVel * Time.deltaTime);
     }
 
-    private void OnDisable()
+
+    void HandleHotbar()
     {
-        playerControls.Player.Disable();
+        if (Input.GetKeyDown(KeyCode.Alpha1)) inventory.SetActiveSlot(0);
+        if (Input.GetKeyDown(KeyCode.Alpha2)) inventory.SetActiveSlot(1);
+        if (Input.GetKeyDown(KeyCode.Alpha3)) inventory.SetActiveSlot(2);
+        if (Input.GetKeyDown(KeyCode.Alpha4)) inventory.SetActiveSlot(3);
+        if (Input.GetKeyDown(KeyCode.Alpha5)) inventory.SetActiveSlot(4);
     }
 
-    private void Update()
+    void HandleActions()
     {
-        CheckGround();
-        HandleAnimation();
-    }
-
-    private void FixedUpdate()
-    {
-        UpdateCargoSystem();
-
-        if (!isToppling)
+        // E: 줍기/장착/적재
+        if (Input.GetKeyDown(KeyCode.E))
         {
-            HandleMovement();
+            TryInteractOrPickup();
+        }
 
-            // ?? NEW LOGIC: Only handle balance if grounded AND carrier is equipped
-            if (isGrounded && isCarrierEquipped)
+
+        // G: 버리기 (활성 슬롯) / 지게 적재물 상단 하차
+        if (Input.GetKeyDown(KeyCode.G))
+        {
+            if (!inventory.DropActiveItem(dropOrigin))
             {
-                HandleBalance();
+                if (carrier != null && carrier.IsEquipped)
+                    carrier.UnloadTop(dropOrigin.position + transform.forward * 1.0f + Vector3.up * 0.5f, transform.forward);
             }
+        }
+        if (carrier != null && carrier.IsEquipped)
+        {
+            carrier.ApplyBalanceInput(Input.GetMouseButton(0) ? -1f : 0f, Input.GetMouseButton(1) ? 1f : 0f);
         }
         else
         {
-            rb.linearVelocity *= 0.9f;
-        }
-
-        // ?? NEW LOGIC: Check for state change to toggle camera view
-        if (isCarrierEquipped != lastCarrierState)
-        {
-            if (cameraManager != null)
-            {
-                cameraManager.SetView(isCarrierEquipped ? CameraViewManager.ViewMode.ThirdPerson : CameraViewManager.ViewMode.FirstPerson);
-            }
-            lastCarrierState = isCarrierEquipped;
+            if (Input.GetMouseButtonDown(0)) inventory.UseActiveItem(this);
         }
     }
-
-    // --- Ragdoll, Ground Check, Update Cargo System, Start/End Recovery (Same as previous, omitted for brevity) ---
-    private void SetupRagdollComponents() {/* ... */}
-    private void SetRagdollEnabled(bool isEnabled) {/* ... */}
-
-    private void HandleMovement()
+    void TryInteractOrPickup()
     {
-        // Movement is based on the Player Root's forward/right direction (controlled by mouse rotation)
-        Vector3 moveDirection = (transform.forward * moveInput.y + transform.right * moveInput.x).normalized;
-        Vector3 targetVelocity = moveDirection * moveSpeed;
-
-        Vector3 currentHorizontalVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
-        Vector3 velocityChange = (targetVelocity - currentHorizontalVelocity);
-
-        velocityChange.x = Mathf.Clamp(velocityChange.x, -10f, 10f);
-        velocityChange.z = Mathf.Clamp(velocityChange.z, -10f, 10f);
-        velocityChange.y = 0;
-
-        rb.AddForce(velocityChange, ForceMode.VelocityChange);
-    }
-
-    private void CheckGround() {/* ... */}
-    private void UpdateCargoSystem()
-    {
-        // ?? Balance system variables are reset when the carrier is not equipped
-        if (!isCarrierEquipped)
+        Camera cam = cameraSwitcher.GetActiveCamera();
+        Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+        if (Physics.Raycast(ray, out RaycastHit hit, interactDistance, interactMask, QueryTriggerInteraction.Ignore))
         {
-            rb.mass = baseMass;
-            rb.centerOfMass = baseCoM;
-            cargoCenterOfMass = baseCoM;
-            return;
-        }
-
-        // ... (Dynamic CoM calculation logic continues here) ...
-        Vector3 weightedPositionSum = Vector3.zero;
-        float totalMass = baseMass;
-
-        weightedPositionSum += baseCoM * baseMass;
-
-        if (cargoStackParent != null)
-        {
-            int cargoCount = cargoStackParent.childCount;
-            for (int i = 0; i < cargoCount; i++)
+            var worldItem = hit.collider.GetComponentInParent<WorldItem>();
+            if (worldItem != null)
             {
-                Transform cargo = cargoStackParent.GetChild(i);
-                totalMass += singleCargoMass;
+                if (worldItem.definition != null && worldItem.definition.isCarrier)
+                {
+                    // 지게 아이템: 사용(토글 장착)
+                    if (inventory.TryPickupWorldItem(worldItem))
+                    {
+                        // 즉시 사용 = 장착 토글
+                        inventory.UseByDefinition(worldItem.definition, this);
+                    }
+                    return;
+                }
 
-                Vector3 cargoLocalPos = transform.InverseTransformPoint(cargo.position);
-                weightedPositionSum += cargoLocalPos * singleCargoMass;
+
+                // 지게 장착 중이면 적재, 아니면 인벤토리 담기
+                if (carrier != null && carrier.IsEquipped && worldItem.definition.itemType == ItemType.Cargo)
+                {
+                    if (carrier.TryMount(worldItem)) return;
+                }
+                else
+                {
+                    inventory.TryPickupWorldItem(worldItem);
+                }
             }
         }
-
-        if (totalMass > 0)
-        {
-            cargoCenterOfMass = weightedPositionSum / totalMass;
-        }
-        else
-        {
-            cargoCenterOfMass = baseCoM;
-        }
-
-        rb.mass = totalMass;
-        rb.centerOfMass = cargoCenterOfMass;
     }
-
-    // --- Balance and Torque Application Logic (Only runs when isCarrierEquipped is true) ---
-    private void HandleBalance()
-    {
-        // 1. Calculate Instability (Torque Source) - Removed Time.fixedDeltaTime from individual factors
-        float slopeSideDot = Vector3.Dot(transform.right, groundNormal);
-        float slopeInstability = slopeSideDot * instabilityFactor;
-
-        float cargoInstability = cargoCenterOfMass.x * 0.5f;
-
-        // Update total balance factor
-        balanceFactor += (slopeInstability + cargoInstability) * Time.fixedDeltaTime;
-
-        // 2. Apply Recovery/Input
-        if (balanceInput != 0)
-            balanceFactor = Mathf.MoveTowards(balanceFactor, -balanceInput, balanceRecoverySpeed * Time.fixedDeltaTime);
-        else
-            balanceFactor = Mathf.MoveTowards(balanceFactor, 0f, autoBalanceSpeed * Time.fixedDeltaTime);
-
-        balanceFactor = Mathf.Clamp(balanceFactor, -1f, 1f);
-
-        // 3. Apply Corrective Torque
-        Vector3 balanceTorque = transform.forward * -balanceFactor * torqueFactor;
-        rb.AddTorque(balanceTorque, ForceMode.Acceleration);
-
-        if (Mathf.Abs(balanceFactor) > toppleThreshold && !isToppling)
-        {
-            StartToppling(balanceFactor > 0);
-        }
-    }
-
-    private void StartToppling(bool leanRight) {/* ... */}
-    private void StartRecovery() {/* ... */}
-    private void EndRecovery()
-    {
-        isToppling = false;
-        playerControls.Player.Enable();
-
-        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
-
-        balanceFactor = 0f;
-    }
-    private void HandleAnimation() {/* ... */}
 }
