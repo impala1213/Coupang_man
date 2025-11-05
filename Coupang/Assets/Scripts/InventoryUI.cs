@@ -1,36 +1,37 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-
+[DisallowMultipleComponent]
 public class InventoryUI : MonoBehaviour
 {
-    public Image[] slotIcons; // 5°³
-    public Color emptyColor = new Color(1, 1, 1, 0.1f);
-    public Color filledColor = Color.white;
-    public Color activeOutline = Color.yellow;
+    public Image[] slotIcons;       // assign 5 Images
+    public int activeColorA = 255;  // highlight alpha
+    public int inactiveColorA = 128;
 
+    private InventorySystem inv;
 
-    public void Refresh(InventorySystem inv, int active)
+    public void Bind(InventorySystem inventory)
     {
+        inv = inventory;
+        if (inv) inv.OnInventoryChanged += Refresh;
+        Refresh();
+    }
+
+    public void Refresh()
+    {
+        if (!inv || slotIcons == null) return;
+
         for (int i = 0; i < slotIcons.Length; i++)
         {
             var img = slotIcons[i];
-            var item = inv.GetSlotRef(i);
-            if (item != null)
-            {
-                img.sprite = item.def.icon;
-                img.color = filledColor;
-            }
-            else
-            {
-                img.sprite = null;
-                img.color = emptyColor;
-            }
-            var outline = img.GetComponent<Outline>();
-            if (outline)
-            {
-                outline.effectColor = (i == active) ? activeOutline : new Color(0, 0, 0, 0.5f);
-            }
+            if (!img) continue;
+            var sp = inv.GetIconAt(i);
+            img.sprite = sp;
+            img.enabled = sp != null;
+
+            var c = img.color;
+            c.a = (i == inv.ActiveIndex) ? activeColorA / 255f : inactiveColorA / 255f;
+            img.color = c;
         }
     }
 }

@@ -1,150 +1,193 @@
-using System.Collections.Generic;
+// Assets/Scripts/Systems/InventorySystem.cs
+using System;
 using UnityEngine;
 
-
-[System.Serializable]
-public class InventoryItem
-{
-    public ItemDefinition def;
-    public int startIndex; // 첫 칸
-    public int size; // 점유 칸 수
-}
-
-
-public interface IUsable
-{
-    void Use(PlayerController player);
-}
-
-
+[DisallowMultipleComponent]
 public class InventorySystem : MonoBehaviour
 {
+    [Header("Config")]
     public int slotCount = 5;
+
+    [Header("UI (optional)")]
     public InventoryUI ui;
 
+    [Header("Player refs (selection effects)")]
+    public PlayerController player; // assign in Inspector (or auto-wire in Awake)
 
-    private InventoryItem[] slotRefs; // 각 칸이 어떤 아이템(헤드/필러 포함)을 가리키는지
-    private List<InventoryItem> items = new List<InventoryItem>();
-    private int activeSlot = 0;
+    public int ActiveIndex { get; private set; } = 0;
+    public event Action OnInventoryChanged;
 
+    [Serializable]
+    private class Entry
+    {
+        public ItemDefinition def;
+        public WorldItem worldRef;
+        public int startIndex;
+        public int size;
+    }
+
+    private Entry[] slots;
 
     void Awake()
     {
-        slotRefs = new InventoryItem[slotCount];
+        slots = new Entry[Mathf.Max(1, slotCount)];
+        if (!player) player = GetComponent<PlayerController>();
+        if (ui) ui.Bind(this);
+        RaiseChanged();
+        ApplySelectionEffects();
     }
-    public void SetActiveSlot(int index)
+
+    void Update()
     {
-        activeSlot = Mathf.Clamp(index, 0, slotCount - 1);
-        ui?.Refresh(this, activeSlot);
+        for (int i = 0; i < Mathf.Min(slotCount, 9); i++)
+            if (Input.GetKeyDown(KeyCode.Alpha1 + i)) SetActiveIndex(i);
     }
-
-
-    public InventoryItem GetActiveItem()
-    {
-        return slotRefs[activeSlot] != null && slotRefs[activeSlot].startIndex == activeSlot ? slotRefs[activeSlot] : null;
-    }
-
 
     public bool TryPickupWorldItem(WorldItem world)
     {
-        if (!world || world.definition == null) return false;
-        if (TryAdd(world.definition, out var invItem))
-        {
-            world.OnPickedUp();
-            ui?.Refresh(this, activeSlot);
-            return true;
-        }
-        return false;
-    }
+        if (!world || !world.definition) return false;
 
+        int need = Mathf.Clamp(world.definition.slotSize, 1, slotCount);
+        int start = FindContiguousFree(need);
+        if (start < 0) { Debug.Log("Inventory full or no contiguous space."); return false; }
 
-    public bool TryAdd(ItemDefinition def, out InventoryItem invItem)
-    {
-        invItem = null;
-        int need = Mathf.Clamp(def.slotSize, 1, slotCount);
-        for (int i = 0; i < slotCount; i++)
-        {
-            if (i + need > slotCount) break;
-            bool can = true;
-            for (int j = 0; j < need; j++) if (slotRefs[i + j] != null) { can = false; break; }
-            if (!can) continue;
+        var e = new Entry { def = world.definition, worldRef = world, startIndex = start, size = need };
+        for (int i = 0; i < need; i++) slots[start + i] = e;
 
+        world.OnPickedUp();
 
-            invItem = new InventoryItem { def = def, startIndex = i, size = need };
-            items.Add(invItem);
-            for (int j = 0; j < need; j++) slotRefs[i + j] = invItem;
-            if (activeSlot < i || activeSlot >= i + need) SetActiveSlot(i); // 새로 채운 곳으로 포커스 이동
-            return true;
-        }
-        return false;
-    }
-    public bool DropActiveItem(Transform origin) => DropActiveItem(origin.position, origin.forward);
-    public bool DropActiveItem(Vector3 pos, Vector3 forward)
-    {
-        var active = GetActiveItem();
-        if (active == null) return false;
-        DoDrop(active, pos + forward * 1f + Vector3.up * 0.5f, forward * 4f);
+        ActiveIndex = start;   // auto-select new item
+        RaiseChanged();
+        ApplySelectionEffects();
         return true;
     }
 
-
-    void DoDrop(InventoryItem item, Vector3 pos, Vector3 impulse)
+    public bool DropActiveItem(Transform dropOrigin, Vector3 forward)
     {
-        // 월드 프리팹 스폰
-        GameObject go = item.def.worldPrefab ? Instantiate(item.def.worldPrefab, pos, Quaternion.identity) : new GameObject(item.def.displayName);
-        var world = go.GetComponent<WorldItem>();
-        if (!world)
+        var e = GetEntryAt(ActiveIndex);
+        if (e == null) return false;
+
+        for (int i = 0; i < e.size; i++) slots[e.startIndex + i] = null;
+
+        if (e.worldRef != null)
         {
-            world = go.AddComponent<WorldItem>();
-            world.definition = item.def;
-            var rb = go.GetComponent<Rigidbody>();
-            if (!rb) rb = go.AddComponent<Rigidbody>();
-            world.rb = rb;
-            var col = go.GetComponent<Collider>();
-            if (!col) col = go.AddComponent<BoxCollider>();
+            Vector3 basePos = dropOrigin ? dropOrigin.position : transform.position;
+            Vector3 pos = basePos + forward.normalized * 0.8f + Vector3.up * 0.5f;
+            e.worldRef.OnDropped(pos, forward.normalized * 3f + Vector3.up * 0.5f);
         }
-        world.OnDropped(pos, impulse);
+        else if (e.def.worldPrefab)
+        {
+            var go = Instantiate(e.def.worldPrefab, transform.position + transform.forward * 0.8f + Vector3.up * 0.5f, Quaternion.identity);
+            var wi = go.GetComponent<WorldItem>();
+            if (wi && wi.definition == null) wi.definition = e.def;
+        }
 
-
-        // 인벤토리 비우기
-        for (int j = 0; j < item.size; j++) slotRefs[item.startIndex + j] = null;
-        items.Remove(item);
-        ui?.Refresh(this, activeSlot);
+        RaiseChanged();
+        ApplySelectionEffects();
+        return true;
     }
-    public void UseActiveItem(PlayerController player)
+
+    public void UseActiveItem(PlayerController playerRef)
     {
-        var active = GetActiveItem();
-        if (active == null) return;
-        // 지게 아이템은 사용 시 장착 토글
-        if (active.def.isCarrier)
+        var e = GetEntryAt(ActiveIndex);
+        if (e == null) return;
+
+        // When active item is carrier, LMB/RMB are reserved for balance. Do nothing here.
+        if (e.def.isCarrier) return;
+
+        // TODO: implement item use behavior for non-carrier items.
+    }
+
+    public void SetActiveIndex(int index)
+    {
+        index = Mathf.Clamp(index, 0, slotCount - 1);
+        if (ActiveIndex != index)
         {
-            var carrier = player.carrier;
-            if (carrier) carrier.ToggleEquip(player.cameraSwitcher);
-            return;
+            ActiveIndex = index;
+            RaiseChanged();
+            ApplySelectionEffects();
         }
-        var usable = GetComponent<IUsable>(); // 확장: 아이템별 Use 핸들러는 별도 컴포넌트로 구현 가능
-                                              // 간단 MVP: Consumable은 그냥 버리기
-        if (active.def.itemType == ItemType.Consumable)
+        else
         {
-            // TODO: 체력/스태미나 회복 등
-            DropActiveItem(player.transform); // 시연을 위해 소비=버리기
+            RaiseChanged();
+            ApplySelectionEffects();
         }
     }
-    public void UseByDefinition(ItemDefinition def, PlayerController player)
+
+    public Sprite GetIconAt(int index)
     {
-        // 인벤토리에 동일 정의가 있으면 그 아이템을 활성화 후 사용
-        foreach (var it in items)
+        var e = GetEntryAt(index);
+        return e != null ? e.def.icon : null;
+    }
+
+    public ItemDefinition GetActiveDefinition()
+    {
+        var e = GetEntryAt(ActiveIndex);
+        return e != null ? e.def : null;
+    }
+
+    // ───────────── internals ─────────────
+    private void RaiseChanged()
+    {
+        OnInventoryChanged?.Invoke();
+        if (ui) ui.Refresh();
+    }
+    private bool lastActiveCarrier = false;
+    private void ApplySelectionEffects()
+    {
+        if (!player || !player.carrier) return;
+
+        var def = GetActiveDefinition();
+        bool activeCarrier = (def != null && def.isCarrier);
+
+        if (activeCarrier != lastActiveCarrier)
         {
-            if (it.def == def)
+            player.carrier.SetActiveMode(activeCarrier);
+            lastActiveCarrier = activeCarrier;
+        }
+    }
+
+
+    private Entry GetEntryAt(int index)
+    {
+        if (index < 0 || index >= slotCount) return null;
+        return slots[index];
+    }
+
+    private int FindContiguousFree(int need)
+    {
+        for (int start = 0; start <= slotCount - need; start++)
+        {
+            bool ok = true;
+            for (int i = 0; i < need; i++)
+                if (slots[start + i] != null) { ok = false; break; }
+            if (ok) return start;
+        }
+        return -1;
+    }
+    public int FindFirstCarrierIndex()
+    {
+        for (int i = 0; i < slotCount; i++)
+        {
+            var e = GetEntryAt(i);
+            if (e != null && e.def != null && e.def.isCarrier) return i;
+        }
+        return -1;
+    }
+
+    public bool SelectFirstNonCarrierSlot()
+    {
+        for (int i = 0; i < slotCount; i++)
+        {
+            var e = GetEntryAt(i);
+            if (e == null || (e.def != null && !e.def.isCarrier))
             {
-                SetActiveSlot(it.startIndex);
-                UseActiveItem(player);
-                return;
+                SetActiveIndex(i);
+                return true;
             }
         }
+        return false;
     }
 
 
-    public IEnumerable<InventoryItem> EnumerateItems() => items;
-    public InventoryItem GetSlotRef(int idx) => slotRefs[idx];
 }
