@@ -2,61 +2,100 @@ using UnityEngine;
 
 public static class InteractFinder
 {
-    const int MaxRayHits = 4;
-    const int MaxOverlap = 32;
+    const int MaxRayHits = 16;
+    const int MaxOverlap = 48;
+
     static readonly RaycastHit[] _rayHits = new RaycastHit[MaxRayHits];
     static readonly Collider[] _overlap = new Collider[MaxOverlap];
 
     /// <summary>
-    /// Find a WorldItem candidate consistently: center ray first, then Z-align assist along player forward.
+    /// Consistent pickup candidate search using first-person camera:
+    /// 1) Thin ray (precise). If it hits any WorldItem, return immediately (carrier allowed).
+    /// 2) If miss, forgiving sphere-cast + overlap samples, optionally excluding carriers.
     /// </summary>
     public static bool FindCandidate(
-        Camera cam,
-        Transform player,
-        float maxDistance,
-        LayerMask interactMask,      // Interactable layer
-        LayerMask losBlockMask,      // blockers (should exclude Interactable & Player)
-        bool enableZAlign,
-        bool onlyInThirdPerson,
-        bool isThirdPerson,
-        float zAlignAngleDeg,
-        float zAlignStep,
-        int zAlignSamples,
-        float zAlignRadius,
+        Camera rayCam,                 // use FIRST-PERSON camera transform
+        Transform player,              // for LOS origin fallback
+        float maxDistance,             // max pickup distance
+        float rayRadius,               // forgiving radius for step 2 (0.3~0.6 typical)
+        LayerMask interactMask,        // Interactable layers
+        LayerMask losBlockMask,        // blockers (exclude Interactable & Player before passing)
+        bool excludeCarrierInAutoSelect, // true: skip carrier in step 2 (forgiving)
         out WorldItem best)
     {
         best = null;
-        if (!cam || !player) return false;
+        if (!rayCam || !player) return false;
 
-        // 1) center ray (NonAlloc)
-        int rh = Physics.RaycastNonAlloc(
-            cam.transform.position, cam.transform.forward,
-            _rayHits, maxDistance, interactMask, QueryTriggerInteraction.Ignore);
+        Vector3 origin = rayCam.transform.position;
+        Vector3 dir = rayCam.transform.forward;
 
-        for (int i = 0; i < rh; i++)
+        // 式式 Step 1: precise thin ray (carrier allowed)
+        int rCount = Physics.RaycastNonAlloc(
+            origin, dir, _rayHits, maxDistance,
+            interactMask, QueryTriggerInteraction.Collide
+        );
+        for (int i = 0; i < rCount; i++)
         {
-            var wi = _rayHits[i].collider ? _rayHits[i].collider.GetComponentInParent<WorldItem>() : null;
-            if (wi) { best = wi; return true; }
+            var col = _rayHits[i].collider;
+            if (!col) continue;
+
+            var wi = col.GetComponentInParent<WorldItem>();
+            if (!wi) continue;
+
+            // LOS check (thin ray already but keep consistency)
+            if (Physics.Linecast(origin, wi.transform.position, out RaycastHit block, losBlockMask, QueryTriggerInteraction.Collide))
+            {
+                var hitWi = block.transform ? block.transform.GetComponentInParent<WorldItem>() : null;
+                if (hitWi != wi) continue; // blocked
+            }
+
+            best = wi;
+            return true; // direct aim wins, even for carrier
         }
 
-        // 2) Z-align assist (player forward)
-        if (!enableZAlign) return false;
-        if (onlyInThirdPerson && !isThirdPerson) return false;
-
-        Vector3 origin = player.position + Vector3.up * 1.4f; // chest-ish
-        Vector3 fwd = player.forward;
-        float cosThresh = Mathf.Cos(zAlignAngleDeg * Mathf.Deg2Rad);
+        // 式式 Step 2: forgiving sphere-cast (carrier can be excluded)
+        int sCount = Physics.SphereCastNonAlloc(
+            origin, rayRadius, dir, _rayHits, maxDistance,
+            interactMask, QueryTriggerInteraction.Collide
+        );
 
         float bestScore = float.PositiveInfinity;
-        int samples = Mathf.Max(1, zAlignSamples);
-        float step = Mathf.Max(0.1f, zAlignStep);
+        for (int i = 0; i < sCount; i++)
+        {
+            var h = _rayHits[i];
+            var wi = h.collider ? h.collider.GetComponentInParent<WorldItem>() : null;
+            if (!wi) continue;
+
+            if (excludeCarrierInAutoSelect && wi.definition && wi.definition.isCarrier)
+                continue; // skip carrier in forgiving phase
+
+            if (Physics.Linecast(origin, wi.transform.position, out RaycastHit block, losBlockMask, QueryTriggerInteraction.Collide))
+            {
+                var hitWi = block.transform ? block.transform.GetComponentInParent<WorldItem>() : null;
+                if (hitWi != wi) continue;
+            }
+
+            float distAlong = h.distance;
+            float dist3D = Vector3.Distance(origin, wi.transform.position);
+            float score = distAlong * 0.7f + dist3D * 0.3f;
+
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = wi;
+            }
+        }
+        if (best) return true;
+
+        // 式式 Step 2b: overlap samples along the ray (for odd shapes)
+        const int samples = 4;
+        float step = maxDistance / samples;
+        float bestScore2 = float.PositiveInfinity;
 
         for (int s = 1; s <= samples; s++)
         {
-            float d = Mathf.Min(maxDistance, s * step);
-            Vector3 c = origin + fwd * d;
-
-            int cnt = Physics.OverlapSphereNonAlloc(c, zAlignRadius, _overlap, interactMask, QueryTriggerInteraction.Ignore);
+            Vector3 center = origin + dir * (s * step);
+            int cnt = Physics.OverlapSphereNonAlloc(center, rayRadius, _overlap, interactMask, QueryTriggerInteraction.Collide);
             if (cnt == 0) continue;
 
             for (int i = 0; i < cnt; i++)
@@ -67,35 +106,36 @@ public static class InteractFinder
                 var wi = col.GetComponentInParent<WorldItem>();
                 if (!wi) continue;
 
-                Vector3 itemPos = wi.transform.position;
-                Vector3 toItem = itemPos - origin;
-                float dist = toItem.magnitude;
-                if (dist <= 0.001f || dist > maxDistance) continue;
+                if (excludeCarrierInAutoSelect && wi.definition && wi.definition.isCarrier)
+                    continue; // skip carrier in forgiving phase
 
-                Vector3 dir = toItem / dist;
-                float dot = Vector3.Dot(fwd, dir);
-                if (dot < cosThresh) continue; // not aligned enough with player forward
-
-                // Line of sight check
-                if (Physics.Linecast(origin, itemPos, out RaycastHit block, losBlockMask, QueryTriggerInteraction.Ignore))
+                if (Physics.Linecast(origin, wi.transform.position, out RaycastHit block, losBlockMask, QueryTriggerInteraction.Collide))
                 {
                     var hitWi = block.transform ? block.transform.GetComponentInParent<WorldItem>() : null;
-                    if (hitWi != wi) continue; // blocked by something else
+                    if (hitWi != wi) continue;
                 }
 
-                // score: prefer alignment, then closeness
-                float angleScore = 1f - dot;        // 0 = perfectly aligned
-                float distScore = dist / maxDistance;
-                float score = angleScore * 2.0f + distScore * 0.5f;
+                Vector3 p = wi.transform.position;
+                float dR = DistancePointToRay(p, origin, dir);            // distance to ray
+                float dC = Vector3.Distance(origin, p);                   // distance to cam
+                float sc = dR * 2.0f + dC * 0.5f;
 
-                if (score < bestScore)
+                if (sc < bestScore2)
                 {
-                    bestScore = score;
+                    bestScore2 = sc;
                     best = wi;
                 }
             }
         }
 
         return best != null;
+    }
+
+    static float DistancePointToRay(Vector3 point, Vector3 rayOrigin, Vector3 rayDirNormalized)
+    {
+        Vector3 toP = point - rayOrigin;
+        float t = Mathf.Max(0f, Vector3.Dot(toP, rayDirNormalized));
+        Vector3 proj = rayOrigin + rayDirNormalized * t;
+        return Vector3.Distance(point, proj);
     }
 }
