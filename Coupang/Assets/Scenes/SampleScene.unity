@@ -197,7 +197,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 3.688
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.y
@@ -412,7 +412,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -1.502
+      value: 2.72
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalRotation.w
@@ -882,7 +882,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -1.502
+      value: 0.9
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalRotation.w
@@ -2136,7 +2136,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 1.11
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.y
@@ -2234,15 +2234,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 0.49
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: -0.35
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -1.502
+      value: 0.34
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalRotation.w
@@ -2280,6 +2280,37 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 443372711}
   m_SourcePrefab: {fileID: 100100000, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
+--- !u!1 &1084424987
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1084424988}
+  m_Layer: 0
+  m_Name: StackPivot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1084424988
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1084424987}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1892091943}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1111377633 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 2635283057471754944, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
@@ -2332,15 +2363,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 2.26
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: -0.08
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -1.502
+      value: -1.1
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalRotation.w
@@ -2782,7 +2813,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -1.502
+      value: 1.937
       objectReference: {fileID: 0}
     - target: {fileID: 4577713719830644302, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
       propertyPath: m_LocalRotation.w
@@ -3103,7 +3134,8 @@ Transform:
   m_LocalPosition: {x: 0, y: 0.90698445, z: -0.26685473}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 1084424988}
   m_Father: {fileID: 543450653050080745}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!4 &1981302654 stripped
@@ -3643,11 +3675,44 @@ MonoBehaviour:
   backLocalScale: {x: 0.5, y: 0.58, z: 0.19}
   hideOnDeactivate: 1
   tilt: 0
-  tiltDrift: 5
+  tiltDrift: 0.1
   tiltRecoverFactor: 30
-  fallThreshold: 25
-  spillExplosionForce: 6
-  spillExplosionRadius: 2.5
+  fallThreshold: 30
+  balancePushSpeed: 55
+  balanceDifficultyPenalty: 0.1
+  driftDifficultyGain: 0.2
+  moveToTilt: 1
+  moveToTiltDifficultyGain: 1
+  moveAccClamp: 0.25
+  moveAccSoftness: 1.2
+  moveAccSmoothing: 12
+  minSpeedForCoupling: 0.4
+  speedFactorExponent: 1
+  tiltRateLimit: 60
+  cargoSideSpeedRange: {x: 0.25, y: 0.8}
+  cargoForwardSpeed: 0.2
+  cargoUpBias: -0.1
+  cargoAngularVel: 1.5
+  cargoFrictionMaterial: {fileID: 0}
+  configureCargoRigidbodies: 1
+  collapseSideMultiplier: 1.4
+  collapseForwardMultiplier: 1.1
+  collapseDownBias: -0.15
+  collapseAngular: 2.2
+  stackPivot: {fileID: 1084424988}
+  stackLeanStiffness: 8
+  stackLeanDamping: 2
+  stackTiltToLean: 0.6
+  stackMoveToLean: 0.35
+  stackLeanMaxDeg: 12
+  stackLeanMaxOffset: 0.04
+  stackFollowTilt: 1
+  stackFollowSmooth: 10
+  offsetSaturationDeg: 25
+  wobbleReference: {fileID: 0}
+  wobbleVelocity: {x: 0, y: 0, z: 0}
+  wobbleAcceleration: {x: 0, y: 0, z: 0}
+  tiltVelocity: 0
   totalWeight: 0
   comHeight: 0
 --- !u!114 &919132148595775323

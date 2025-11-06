@@ -58,17 +58,28 @@ public class PlayerController : MonoBehaviour
 
         float h = Input.GetAxisRaw("Horizontal");
         float v = Input.GetAxisRaw("Vertical");
-        Vector3 move = (transform.right * h + transform.forward * v).normalized;
 
-        float speed = Input.GetKey(KeyCode.LeftShift) ? sprintSpeed : walkSpeed;
-        controller.Move(move * speed * Time.deltaTime);
+        Vector3 moveLocal = new Vector3(h, 0f, v).normalized;
+        Vector3 moveWorld = transform.TransformDirection(moveLocal);
 
-        if (grounded && verticalVel < 0f) verticalVel = -2f;
+        float baseSpeed = Input.GetKey(KeyCode.LeftShift) ? sprintSpeed : walkSpeed;
+
+        // NEW: weight/tilt dependent speed multiplier (only when carrier is in play)
+        float speedMul = 1f;
+        if (carrier != null)
+        {
+            // pass LOCAL input (x: left/right, y: forward/back)
+            speedMul = carrier.GetSpeedMultiplier(new Vector2(h, v));
+        }
+
+        controller.Move(moveWorld * baseSpeed * speedMul * Time.deltaTime);
+
+        if (grounded && verticalVel < 0) verticalVel = -2f;
         if (Input.GetKeyDown(KeyCode.Space) && grounded) verticalVel = jumpForce;
-
         verticalVel += gravity * Time.deltaTime;
         controller.Move(Vector3.up * verticalVel * Time.deltaTime);
     }
+
 
     void HandleHotbar()
     {

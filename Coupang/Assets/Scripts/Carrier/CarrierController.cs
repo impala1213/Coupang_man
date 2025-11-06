@@ -57,9 +57,9 @@ public class CarrierController : MonoBehaviour
     [Tooltip("How much difficulty multiplies drift. e.g., 0.6 -> drift*(1 + diff*0.6).")]
     public float driftDifficultyGain = 0.6f;
     [Tooltip("Acceleration (local X) to tilt coupling (deg per m/s^2).")]
-    public float moveToTilt = 1.8f;
+    public float moveToTilt = 0.6f; // lowered default to avoid over-sensitivity
     [Tooltip("How much difficulty amplifies move-to-tilt coupling.")]
-    public float moveToTiltDifficultyGain = 1.2f;
+    public float moveToTiltDifficultyGain = 0.4f; // lowered default
 
     [Header("Movement→Tilt filter")]
     [Tooltip("Max |a_x| used for tilt coupling (m/s^2).")]
@@ -75,7 +75,25 @@ public class CarrierController : MonoBehaviour
     [Tooltip("Hard limit for how fast tilt can change (deg/s).")]
     public float tiltRateLimit = 60f;
 
+    // NEW: Asymmetric return resistance (slows correction when moving against current tilt)
+    [Header("Asymmetric Return Resistance")]
+    [Tooltip("Weight factor used in return resistance divisor when movement tries to reduce tilt.")]
+    public float oppositeReturnWeight = 0.06f;
+    [Tooltip("Tilt factor (per degree) used in return resistance divisor.")]
+    public float oppositeReturnPerDeg = 0.02f;
+
     private float _accX; // filtered local X-acceleration
+
+    // ─────────── Player movement penalties (requested) ───────────
+    [Header("Player Speed Penalties")]
+    [Tooltip("Base speed multiplier = 1 / (1 + totalWeight * this).")]
+    public float speedPenaltyPerWeight = 0.03f;
+    [Tooltip("Additional penalty from |tilt| (per degree).")]
+    public float speedPenaltyPerTilt = 0.01f;
+    [Tooltip("Extra penalty when lateral input goes opposite to current tilt (per degree).")]
+    public float lateralOppositePenaltyPerDeg = 0.02f;
+    [Tooltip("Minimum overall speed multiplier clamp.")]
+    public float minSpeedMultiplier = 0.3f;
 
     // ─────────── Realistic spill / drop (no explosions) ────────────
     [Header("Spill Physics (realistic)")]
@@ -97,11 +115,11 @@ public class CarrierController : MonoBehaviour
     [Header("Stack Lean (bar mode)")]
     [Tooltip("All loaded visuals will be parented to this pivot and leaned together.")]
     public Transform stackPivot;              // auto-created under carrierCargoRoot
-    public float stackLeanStiffness = 8f;     // spring K (used in fallback mode)
-    public float stackLeanDamping = 2.0f;    // damping (used in fallback mode)
-    public float stackTiltToLean = 0.6f;    // tilt(deg) → Z-lean (fallback)
-    public float stackMoveToLean = 0.35f;   // lateral acceleration → Z-lean (fallback)
-    public float stackLeanMaxDeg = 12f;     // clamp (fallback)
+    public float stackLeanStiffness = 8f;     // spring K (fallback mode)
+    public float stackLeanDamping = 2.0f;    // damping (fallback)
+    public float stackTiltToLean = 0.6f;    // fallback
+    public float stackMoveToLean = 0.10f;   // lowered default (visual only)
+    public float stackLeanMaxDeg = 12f;     // clamp
     public float stackLeanMaxOffset = 0.04f;   // local X slide (meters)
     private float _stackLean, _stackLeanVel;
     private Vector3 _stackBaseLocalPos;
@@ -183,6 +201,35 @@ public class CarrierController : MonoBehaviour
 
         tilt += dir * effPush * Time.deltaTime;
         tilt = Mathf.Clamp(tilt, -90f, 90f);
+    }
+
+    /// <summary>
+    /// Compute a movement speed multiplier from weight/tilt.
+    /// Pass the player's local input (x: left/right, y: forward/back). Returns value in [minSpeedMultiplier, 1].
+    /// Not applied when carrier is inactive and there is no mounted cargo.
+    /// </summary>
+    public float GetSpeedMultiplier(Vector2 localMoveInput)
+    {
+        if (!active && !HasMountedCargo) return 1f;
+
+        float baseMul = 1f / (1f + Mathf.Max(0f, totalWeight) * Mathf.Max(0f, speedPenaltyPerWeight));
+        baseMul /= (1f + Mathf.Abs(tilt) * Mathf.Max(0f, speedPenaltyPerTilt));
+
+        // Asymmetric lateral penalty: when moving opposite to current tilt direction
+        float x = localMoveInput.x;
+        float signTilt = Mathf.Sign(tilt);
+        if (Mathf.Abs(x) > 0.01f && signTilt != 0f)
+        {
+            // opposite if input and tilt have opposite signs (e.g., tilt<0 (left), move right (x>0))
+            bool opposite = Mathf.Sign(x) == -signTilt;
+            if (opposite)
+            {
+                float oppMul = 1f / (1f + Mathf.Abs(tilt) * Mathf.Max(0f, lateralOppositePenaltyPerDeg));
+                baseMul *= oppMul;
+            }
+        }
+
+        return Mathf.Clamp(baseMul, Mathf.Clamp01(minSpeedMultiplier), 1f);
     }
 
     public bool TryMount(WorldItem world)
@@ -362,7 +409,16 @@ public class CarrierController : MonoBehaviour
 
         float moveDrive = acc * moveToTilt * (1f + Mathf.Max(0f, difficulty) * Mathf.Max(0f, moveToTiltDifficultyGain)) * speedFactor;
 
-        // integrate with rate limit
+        // NEW: asymmetric return resistance — if moveDrive tries to REDUCE current tilt, slow it down
+        if (Mathf.Sign(moveDrive) == -Mathf.Sign(tilt) && Mathf.Abs(tilt) > 0.001f)
+        {
+            float div = 1f
+                + Mathf.Max(0f, totalWeight) * Mathf.Max(0f, oppositeReturnWeight)
+                + Mathf.Abs(tilt) * Mathf.Max(0f, oppositeReturnPerDeg);
+            moveDrive /= Mathf.Max(1f, div);
+        }
+
+        // integrate (with rate limit)
         float delta = (drift + moveDrive) * dt;
         float maxDelta = Mathf.Max(0f, tiltRateLimit) * dt;
         if (maxDelta > 0f) delta = Mathf.Clamp(delta, -maxDelta, maxDelta);
