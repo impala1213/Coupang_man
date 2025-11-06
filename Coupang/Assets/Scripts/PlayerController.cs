@@ -99,29 +99,26 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // G: always drop. If carrier active → drop carrier item + exit 3rd-person
-        // G: always drop. If carrier active → spill cargo first, then drop carrier, then exit 3rd-person
+        // G: spill cargo, then drop the carrier straight down, then exit 3rd-person
         if (Input.GetKeyDown(KeyCode.G))
         {
             Transform originT = dropOrigin ? dropOrigin : transform;
             Vector3 fwd = transform.forward;
-            Vector3 spillOrigin = originT.position + Vector3.up * 0.3f + fwd * 0.3f;
+            Vector3 spillOrigin = originT.position + Vector3.up * 0.3f;
 
             if (carrier && carrier.IsActive)
             {
                 if (inventory != null)
                 {
-                    // 1) spill all loaded cargo at the drop spot
+                    // 1) spill loaded cargo with realistic motion
                     if (carrier.HasMountedCargo)
-                        carrier.SpillAllAt(spillOrigin, fwd);
+                        carrier.SpillAllAt(spillOrigin, fwd * 0.2f);
 
-                    // 2) select carrier slot and drop the carrier item itself
+                    // 2) select carrier slot and drop the CARRIER ITSELF straight down
                     int carrierIdx = inventory.FindFirstCarrierIndex();
                     if (carrierIdx >= 0) inventory.SetActiveIndex(carrierIdx);
 
-                    bool ok = inventory.DropActiveItem(originT, fwd);
-
-                    // 3) leave carrier mode (3rd -> 1st) and move selection away
+                    bool ok = inventory.DropActiveItem(originT, Vector3.zero); // ← no forward impulse
                     carrier.SetActiveMode(false);
                     inventory.SelectFirstNonCarrierSlot();
 
@@ -130,10 +127,11 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                // normal drop of whatever is in the active slot
+                // normal drop for non-carrier
                 inventory?.DropActiveItem(originT, fwd);
             }
         }
+
 
 
         // LMB: use active item only when not in carrier mode

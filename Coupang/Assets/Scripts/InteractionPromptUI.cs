@@ -21,7 +21,7 @@ public class InteractionPromptUI : MonoBehaviour
 
     void Awake()
     {
-        if (!player) player = FindObjectOfType<PlayerController>();
+        if (!player) player = FindFirstObjectByType<PlayerController>();
         if (!carrier && player) carrier = player.carrier;
         if (!label) label = GetComponentInChildren<TextMeshProUGUI>(true);
         if (!canvasGroup) canvasGroup = GetComponent<CanvasGroup>();
