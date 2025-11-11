@@ -13,90 +13,62 @@ using PhysicsMaterial = UnityEngine.PhysicMaterial;
 [DisallowMultipleComponent]
 public class CarrierController : MonoBehaviour
 {
-    // ───────────────────────────── State ─────────────────────────────
-    [Header("State (selection-driven)")]
-    [SerializeField] private bool active;
-    public bool IsActive => active;
-    public event Action<bool> OnActiveChanged;
-
-    // ─────────────────────────── References ──────────────────────────
+    // ───────────── References ─────────────
     [Header("References")]
-    public CameraSwitcher cameraSwitcher;
-    public Transform carrierCargoRoot;   // visual stack parent (static)
-    public Transform carrierVisualPivot; // Z-tilt visual feedback (player body lean)
+    public Transform carrierCargoRoot;   // visual stack parent (static on back)
+    public Transform stackPivot;         // parent for all loaded visuals (lean target)
+    public Transform wobbleReference;    // usually player root (for velocity sampling)
 
-    // ────────────────────────── Back Visual ─────────────────────────
-    [Header("Back Visual")]
-    public bool showBackVisual = true;
-    public Transform backSocket;
-    public GameObject backVisualPrefab;
-    public Vector3 backLocalPosition = Vector3.zero;
-    public Vector3 backLocalEuler = Vector3.zero;
-    public Vector3 backLocalScale = Vector3.one;
-    public bool hideOnDeactivate = true;
-    private GameObject backVisualInstance;
+    // ───────────── Visual sway (auto recovers when stopping) ─────────────
+    [Header("Sway (auto-recover)")]
+    [Tooltip("Lateral accel (m/s^2) to degrees for visual sway.")]
+    public float swayAccToDeg = 8f;
+    [Tooltip("How fast sway goes back to zero when stopping (deg/s).")]
+    public float swayRecoverSpeed = 80f;
+    [Tooltip("Max sway angle (deg).")]
+    public float swayMaxDeg = 10f;
+    [Tooltip("Tiny lateral slide per degree (meters/deg).")]
+    public float swayXOffsetPerDeg = 0.0008f;
 
-    // ─────────────────────────── Balance ────────────────────────────
-    [Header("Balance")]
-    [Tooltip("Current balance angle (+ = right, - = left).")]
-    public float tilt;
-    [Tooltip("Base random drift strength (deg/s).")]
-    public float tiltDrift = 5f;
-    [Tooltip("Legacy (kept for compatibility, not used for manual centering).")]
-    public float tiltRecoverFactor = 30f;
-    [Tooltip("If |tilt| exceeds this angle (deg), the load collapses to the tilted side.")]
-    public float fallThreshold = 25f;
+    private float _swayDeg;          // current visual sway angle (deg, + = right)
+    private float _swayVel;          // not used for dynamics, reserved
 
-    [Header("Balance Input (mouse)")]
-    [Tooltip("Mouse push speed (deg/s). Higher = stronger hand force.")]
-    public float balancePushSpeed = 55f;
-    [Tooltip("Higher difficulty reduces your effective push. 0.5 means /(1 + diff*0.5).")]
-    public float balanceDifficultyPenalty = 0.5f;
+    // ───────────── Elastic bend (bottom→top inertia) ─────────────
+    [Header("Elastic Bend (bottom→top)")]
+    public bool useElasticBend = true;
+    public float bendStiffness = 14f;      // spring K (deg/s^2)
+    public float bendDamping = 3.5f;       // damping
+    public float bendAccToDrive = 4f;      // extra drive from lateral accel
+    public float bendUpAmplify = 1.1f;     // upper layers sway slightly more
+    public float bendMaxDegPerLayer = 8f;  // clamp
+    public float bendXOffsetPerDeg = 0.0006f;
 
-    [Header("Instability & Coupling")]
-    [Tooltip("How much difficulty multiplies drift. e.g., 0.6 -> drift*(1 + diff*0.6).")]
-    public float driftDifficultyGain = 0.6f;
-    [Tooltip("Acceleration (local X) to tilt coupling (deg per m/s^2).")]
-    public float moveToTilt = 0.6f; // lowered default to avoid over-sensitivity
-    [Tooltip("How much difficulty amplifies move-to-tilt coupling.")]
-    public float moveToTiltDifficultyGain = 0.4f; // lowered default
+    private readonly List<float> _bendAngles = new List<float>();
+    private readonly List<float> _bendVels = new List<float>();
+    private int _lastChildCount = -1;
+    private static readonly List<Transform> _tmpChildren = new List<Transform>();
 
-    [Header("Movement→Tilt filter")]
-    [Tooltip("Max |a_x| used for tilt coupling (m/s^2).")]
-    public float moveAccClamp = 0.25f;
-    [Tooltip("Soft saturation factor (higher = softer).")]
-    public float moveAccSoftness = 1.2f;
-    [Tooltip("Low-pass rate (1/s), 0 = off.")]
-    public float moveAccSmoothing = 12f;
-    [Tooltip("Enable coupling only when horizontal speed is above this (m/s).")]
-    public float minSpeedForCoupling = 0.4f;
-    [Tooltip("Speed factor exponent; 1.0 = linear.")]
-    public float speedFactorExponent = 1.0f;
-    [Tooltip("Hard limit for how fast tilt can change (deg/s).")]
-    public float tiltRateLimit = 60f;
+    // ───────────── Spill triggers (impacts/knock) ─────────────
+    [Header("Spill Triggers")]
+    [Tooltip("If true, falling from height or impact can spill all cargo.")]
+    public bool enableImpactSpill = true;
+    [Tooltip("Vertical drop height (m) to trigger spill on landing.")]
+    public float fallHeightTrigger = 3.0f;
+    [Tooltip("Downward impact speed (m/s) to trigger spill on landing.")]
+    public float impactSpeedTrigger = 8.0f;
+    [Tooltip("Sudden horizontal speed (m/s) considered a knock.")]
+    public float knockSpeedTrigger = 10.0f;
 
-    // NEW: Asymmetric return resistance (slows correction when moving against current tilt)
-    [Header("Asymmetric Return Resistance")]
-    [Tooltip("Weight factor used in return resistance divisor when movement tries to reduce tilt.")]
-    public float oppositeReturnWeight = 0.06f;
-    [Tooltip("Tilt factor (per degree) used in return resistance divisor.")]
-    public float oppositeReturnPerDeg = 0.02f;
+    // grounded state is reported by PlayerController
+    private bool _lastGrounded = true;
+    private bool _airborne = false;
+    private float _fallStartY;
+    private Vector3 _lastPos, _lastVel;   // sampled from wobbleReference
+    public Vector3 sampledVelocity { get; private set; }
+    public Vector3 sampledAcceleration { get; private set; }
 
-    private float _accX; // filtered local X-acceleration
-
-    // ─────────── Player movement penalties (requested) ───────────
-    [Header("Player Speed Penalties")]
-    [Tooltip("Base speed multiplier = 1 / (1 + totalWeight * this).")]
-    public float speedPenaltyPerWeight = 0.03f;
-    [Tooltip("Additional penalty from |tilt| (per degree).")]
-    public float speedPenaltyPerTilt = 0.01f;
-    [Tooltip("Extra penalty when lateral input goes opposite to current tilt (per degree).")]
-    public float lateralOppositePenaltyPerDeg = 0.02f;
-    [Tooltip("Minimum overall speed multiplier clamp.")]
-    public float minSpeedMultiplier = 0.3f;
-
-    // ─────────── Realistic spill / drop (no explosions) ────────────
-    [Header("Spill Physics (realistic)")]
+    // ───────────── Spill physics (realistic) ─────────────
+    [Header("Spill Physics")]
     public Vector2 cargoSideSpeedRange = new Vector2(0.25f, 0.8f);
     public float cargoForwardSpeed = 0.2f;
     public float cargoUpBias = -0.1f;
@@ -104,145 +76,94 @@ public class CarrierController : MonoBehaviour
     public PhysicsMaterial cargoFrictionMaterial;
     public bool configureCargoRigidbodies = true;
 
-    // ───────────────────── Collapse tuning ──────────────────────────
-    [Header("Collapse (tilt-driven)")]
-    public float collapseSideMultiplier = 1.4f;
-    public float collapseForwardMultiplier = 1.1f;
-    public float collapseDownBias = -0.15f;
-    public float collapseAngular = 2.2f;
-
-    // ─────────────── Stack Lean: BAR MODE (single pivot) ───────────────
-    [Header("Stack Lean (bar mode)")]
-    [Tooltip("All loaded visuals will be parented to this pivot and leaned together.")]
-    public Transform stackPivot;              // auto-created under carrierCargoRoot
-    public float stackLeanStiffness = 8f;     // spring K (fallback mode)
-    public float stackLeanDamping = 2.0f;    // damping (fallback)
-    public float stackTiltToLean = 0.6f;    // fallback
-    public float stackMoveToLean = 0.10f;   // lowered default (visual only)
-    public float stackLeanMaxDeg = 12f;     // clamp
-    public float stackLeanMaxOffset = 0.04f;   // local X slide (meters)
-    private float _stackLean, _stackLeanVel;
-    private Vector3 _stackBaseLocalPos;
-
-    [Header("Stack Lean Lock (follow tilt)")]
-    [Tooltip("If true, the visual stack pivot follows the Tilt angle almost 1:1.")]
-    public bool stackFollowTilt = true;
-    [Tooltip("How quickly the visual catches the Tilt (1/s). 0 = instant.")]
-    public float stackFollowSmooth = 10f;
-    [Tooltip("Degrees at which lateral X offset saturates (for visual slide).")]
-    public float offsetSaturationDeg = 25f;
-
-    // ───────────────────── Wobble telemetry (for lean) ─────────────────────
-    [Header("Wobble Telemetry (read-only)")]
-    public Transform wobbleReference;
-    public Vector3 wobbleVelocity;
-    public Vector3 wobbleAcceleration;
-    public float tiltVelocity; // d(tilt)/dt
-    private Vector3 _lastWobblePos, _lastVel;
-    private float _lastTilt;
-
-    // ───────────────────── Derived (read-only) ──────────────────────
+    // ───────────── Data ─────────────
     [Header("Derived (read-only)")]
     public float totalWeight;
-    public float comHeight;
-    public bool HasMountedCargo => mounted.Count > 0;
+    public float stackTotalHeight;
+
     private readonly List<WorldItem> mounted = new List<WorldItem>();
 
-    // ─────────────────────────── Unity ──────────────────────────────
+    // ───────────── Unity ─────────────
     void Awake()
     {
         EnsureStackPivot();
+        _lastPos = wobbleReference ? wobbleReference.position : transform.position;
     }
 
     void Update()
     {
-        if (!active) return;
-
+        UpdateTelemetry(Time.deltaTime);
         UpdateDerived();
-        SimulateBalance(Time.deltaTime);
-        UpdateVisual();
-        UpdateWobbleTelemetry(Time.deltaTime);
-        UpdateAndApplyStackLean(Time.deltaTime);
+
+        UpdateSway(Time.deltaTime);
+        UpdateElasticBend(Time.deltaTime);
     }
 
 #if UNITY_EDITOR
     void OnValidate()
     {
         EnsureStackPivot();
-        SyncVisuals();
     }
 #endif
 
-    // ───────────────────────── Public API ───────────────────────────
-    public void SetActiveMode(bool value)
-    {
-        if (active == value) { SyncVisuals(); return; }
-        active = value;
-        SyncVisuals();
-        OnActiveChanged?.Invoke(active);
-    }
+    // ───────────── Public API ─────────────
 
     /// <summary>
-    /// Mouse balance control:
-    /// left=1 makes tilt more negative (leans left), right=1 makes tilt more positive (leans right).
-    /// If the load is leaning right (tilt>0), press LEFT to push it back toward center; pressing RIGHT accelerates the fall.
-    /// Call every frame while buttons are held.
+    /// PlayerController should call this each frame to report grounded and position.
     /// </summary>
-    public void ApplyBalanceInput(float left, float right)
+    public void ReportGroundedState(bool grounded, Vector3 worldPos, Vector3 controllerVelocity)
     {
-        if (!active) return;
+        if (!enableImpactSpill) { _lastGrounded = grounded; return; }
 
-        float dir = Mathf.Clamp(right - left, -1f, 1f); // left=-1, right=+1
-        if (Mathf.Approximately(dir, 0f)) return;
-
-        // Heavier/taller → player's hand force is less effective
-        float difficulty = totalWeight * (0.5f + comHeight * 1.5f);
-        float effPush = balancePushSpeed / (1f + Mathf.Max(0f, difficulty) * Mathf.Max(0f, balanceDifficultyPenalty));
-
-        tilt += dir * effPush * Time.deltaTime;
-        tilt = Mathf.Clamp(tilt, -90f, 90f);
-    }
-
-    /// <summary>
-    /// Compute a movement speed multiplier from weight/tilt.
-    /// Pass the player's local input (x: left/right, y: forward/back). Returns value in [minSpeedMultiplier, 1].
-    /// Not applied when carrier is inactive and there is no mounted cargo.
-    /// </summary>
-    public float GetSpeedMultiplier(Vector2 localMoveInput)
-    {
-        if (!active && !HasMountedCargo) return 1f;
-
-        float baseMul = 1f / (1f + Mathf.Max(0f, totalWeight) * Mathf.Max(0f, speedPenaltyPerWeight));
-        baseMul /= (1f + Mathf.Abs(tilt) * Mathf.Max(0f, speedPenaltyPerTilt));
-
-        // Asymmetric lateral penalty: when moving opposite to current tilt direction
-        float x = localMoveInput.x;
-        float signTilt = Mathf.Sign(tilt);
-        if (Mathf.Abs(x) > 0.01f && signTilt != 0f)
+        if (!grounded && _lastGrounded)
         {
-            // opposite if input and tilt have opposite signs (e.g., tilt<0 (left), move right (x>0))
-            bool opposite = Mathf.Sign(x) == -signTilt;
-            if (opposite)
+            // take-off
+            _airborne = true;
+            _fallStartY = worldPos.y;
+        }
+        else if (grounded && !_lastGrounded)
+        {
+            // landing
+            if (_airborne)
             {
-                float oppMul = 1f / (1f + Mathf.Abs(tilt) * Mathf.Max(0f, lateralOppositePenaltyPerDeg));
-                baseMul *= oppMul;
+                float fallHeight = _fallStartY - worldPos.y; // meters
+                float downSpeed = Mathf.Max(0f, -controllerVelocity.y); // m/s
+                if (fallHeight >= fallHeightTrigger || downSpeed >= impactSpeedTrigger)
+                {
+                    Vector3 origin = stackPivot ? stackPivot.position : transform.position + Vector3.up * 1.0f;
+                    SpillAllAt(origin, transform.forward);
+                }
             }
+            _airborne = false;
         }
 
-        return Mathf.Clamp(baseMul, Mathf.Clamp01(minSpeedMultiplier), 1f);
+        _lastGrounded = grounded;
     }
 
+    /// <summary>
+    /// Optional external knock (e.g., enemy hit). If speed is big enough, spill.
+    /// </summary>
+    public void NotifyExternalKnock(float speedMagnitude)
+    {
+        if (!enableImpactSpill) return;
+        if (speedMagnitude >= knockSpeedTrigger)
+        {
+            Vector3 origin = stackPivot ? stackPivot.position : transform.position + Vector3.up * 1.0f;
+            SpillAllAt(origin, transform.forward);
+        }
+    }
+
+    /// <summary>
+    /// Try to mount a world item onto the carrier (always allowed if called by Inventory when inventory has no space).
+    /// </summary>
     public bool TryMount(WorldItem world)
     {
-        if (!active) return false;
         if (!world || !world.definition) return false;
         if (world.definition.isCarrier) return false;
 
         world.OnPickedUp();
-
         EnsureStackPivot();
 
-        // compute current stack top height
         float currentY = 0f;
         for (int i = 0; i < mounted.Count; i++)
             currentY += Mathf.Max(0.01f, mounted[i].definition.stackSize.y);
@@ -274,264 +195,170 @@ public class CarrierController : MonoBehaviour
             var rend = go.GetComponent<Renderer>(); if (rend && rend.material) rend.material.color = def.stackColor;
         }
 
-        // ensure NO per-item wobble component attached
-
         mounted.Add(world);
+        _lastChildCount = -1; // rebuild bend chain
         return true;
     }
 
-    public void UnloadTop(Vector3 dropPos, Vector3 forward)
+    /// <summary>
+    /// Called by InventorySystem when player drops the carrier item. All mounted cargo spill too.
+    /// </summary>
+    public void SpillAllOnCarrierDrop(Vector3 origin, Vector3 forward)
     {
-        if (mounted.Count == 0) return;
-
-        var top = mounted[mounted.Count - 1];
-        mounted.RemoveAt(mounted.Count - 1);
-
-        if (stackPivot && stackPivot.childCount > 0)
-        {
-            var last = stackPivot.GetChild(stackPivot.childCount - 1);
-            Destroy(last.gameObject);
-        }
-
-        ApplyRealisticDrop(top, dropPos, forward);
+        SpillAllAt(origin, forward);
     }
 
-    /// <summary>Spill all mounted cargo at a given origin (e.g., dropping carrier).</summary>
+    /// <summary>
+    /// Spill all current mounted cargo to world.
+    /// </summary>
     public void SpillAllAt(Vector3 origin, Vector3 forward)
     {
         for (int i = 0; i < mounted.Count; i++)
         {
-            var m = mounted[i];
-            if (!m) continue;
+            var wi = mounted[i];
+            if (!wi) continue;
 
             Vector3 pos = origin + Vector3.up * 0.1f + UnityEngine.Random.insideUnitSphere * 0.05f;
-            ApplyRealisticDrop(m, pos, forward);
+            ApplyRealisticDrop(wi, pos, forward);
         }
 
         mounted.Clear();
         ClearVisuals();
-        ResetStackLeanInstant();
-        tilt = 0f;
+        _bendAngles.Clear(); _bendVels.Clear(); _lastChildCount = -1;
     }
 
-    // ───────────────────────── Internals ───────────────────────────
-    private void SyncVisuals()
-    {
-        if (cameraSwitcher) cameraSwitcher.SetThirdPerson(active);
-        UpdateBackVisual();
-    }
+    public bool HasAnyMounted() => mounted.Count > 0;
 
-    private void UpdateBackVisual()
+    // ───────────── Internals ─────────────
+
+    private void UpdateTelemetry(float dt)
     {
-        if (!showBackVisual)
+        var t = wobbleReference ? wobbleReference : transform;
+        Vector3 p = t.position;
+
+        if (dt > 0f)
         {
-            if (backVisualInstance) backVisualInstance.SetActive(false);
-            return;
+            Vector3 v = (p - _lastPos) / dt;
+            Vector3 a = (v - _lastVel) / dt;
+
+            sampledVelocity = Vector3.Lerp(sampledVelocity, v, 0.2f);
+            sampledAcceleration = Vector3.Lerp(sampledAcceleration, a, 0.2f);
+
+            _lastVel = v;
         }
+        _lastPos = p;
 
-        if (active)
+        // auto knock detect (optional)
+        if (enableImpactSpill)
         {
-            Transform parent = backSocket ? backSocket : transform;
-            if (!backVisualInstance)
+            float horiz = new Vector2(sampledVelocity.x, sampledVelocity.z).magnitude;
+            if (!_airborne && horiz >= knockSpeedTrigger * 1.15f) // small bias
             {
-                backVisualInstance = backVisualPrefab
-                    ? Instantiate(backVisualPrefab, parent, false)
-                    : GameObject.CreatePrimitive(PrimitiveType.Cube);
-
-                if (!backVisualPrefab)
-                    backVisualInstance.name = "CarrierBackVisual_Placeholder";
-
-                foreach (var c in backVisualInstance.GetComponentsInChildren<Collider>(true)) Destroy(c);
-                foreach (var r in backVisualInstance.GetComponentsInChildren<Rigidbody>(true)) Destroy(r);
-
-                backVisualInstance.transform.SetParent(parent, false);
+                Vector3 origin = stackPivot ? stackPivot.position : transform.position + Vector3.up * 1.0f;
+                SpillAllAt(origin, transform.forward);
             }
-
-            backVisualInstance.transform.localPosition = backLocalPosition;
-            backVisualInstance.transform.localRotation = Quaternion.Euler(backLocalEuler);
-            backVisualInstance.transform.localScale = backLocalScale;
-            backVisualInstance.SetActive(true);
-        }
-        else
-        {
-            if (backVisualInstance && hideOnDeactivate) backVisualInstance.SetActive(false);
         }
     }
 
     private void UpdateDerived()
     {
         totalWeight = 0f;
-        float weightedCenter = 0f;
-        float cumulativeY = 0f;
-
+        stackTotalHeight = 0f;
         for (int i = 0; i < mounted.Count; i++)
         {
             var w = mounted[i];
             if (!w || !w.definition) continue;
-
-            float mass = Mathf.Max(0.01f, w.definition.weight);
-            Vector3 sz = w.definition.stackSize;
-            float h = Mathf.Max(0.01f, sz.y);
-
-            totalWeight += mass;
-            float centerY = cumulativeY + h * 0.5f;
-            weightedCenter += mass * centerY;
-            cumulativeY += h;
+            totalWeight += Mathf.Max(0.01f, w.definition.weight);
+            stackTotalHeight += Mathf.Max(0.01f, w.definition.stackSize.y);
         }
-        comHeight = (totalWeight > 0f) ? (weightedCenter / totalWeight) : 0.1f;
     }
 
-    private void SimulateBalance(float dt)
-    {
-        // difficulty grows with mass and COM height
-        float difficulty = totalWeight * (0.5f + comHeight * 1.5f);
-
-        // 1) random drift — scales with difficulty
-        float baseRand = (UnityEngine.Random.value - 0.5f) * 2f; // [-1,1]
-        float drift = baseRand * tiltDrift * (1f + Mathf.Max(0f, difficulty) * Mathf.Max(0f, driftDifficultyGain));
-
-        // 2) movement→tilt coupling with filtering
-        float rawAccX = transform.InverseTransformVector(wobbleAcceleration).x;
-
-        // low-pass filter (exponential form)
-        float alpha = Mathf.Clamp01(moveAccSmoothing * dt);
-        _accX = Mathf.Lerp(_accX, rawAccX, alpha);
-
-        // clamp & soft-saturate
-        float acc = Mathf.Clamp(_accX, -moveAccClamp, moveAccClamp);
-        acc = acc / (1f + Mathf.Abs(acc) * Mathf.Max(0.0001f, moveAccSoftness)); // soft limit
-
-        // speed gating
-        Vector3 horizVel = new Vector3(wobbleVelocity.x, 0f, wobbleVelocity.z);
-        float speed = horizVel.magnitude;
-        float speedFactor = Mathf.InverseLerp(minSpeedForCoupling, minSpeedForCoupling + 2f, speed);
-        if (speedFactorExponent != 1f) speedFactor = Mathf.Pow(speedFactor, Mathf.Max(0.1f, speedFactorExponent));
-
-        float moveDrive = acc * moveToTilt * (1f + Mathf.Max(0f, difficulty) * Mathf.Max(0f, moveToTiltDifficultyGain)) * speedFactor;
-
-        // NEW: asymmetric return resistance — if moveDrive tries to REDUCE current tilt, slow it down
-        if (Mathf.Sign(moveDrive) == -Mathf.Sign(tilt) && Mathf.Abs(tilt) > 0.001f)
-        {
-            float div = 1f
-                + Mathf.Max(0f, totalWeight) * Mathf.Max(0f, oppositeReturnWeight)
-                + Mathf.Abs(tilt) * Mathf.Max(0f, oppositeReturnPerDeg);
-            moveDrive /= Mathf.Max(1f, div);
-        }
-
-        // integrate (with rate limit)
-        float delta = (drift + moveDrive) * dt;
-        float maxDelta = Mathf.Max(0f, tiltRateLimit) * dt;
-        if (maxDelta > 0f) delta = Mathf.Clamp(delta, -maxDelta, maxDelta);
-
-        tilt += delta;
-        tilt = Mathf.Clamp(tilt, -90f, 90f);
-
-        if (Mathf.Abs(tilt) > fallThreshold)
-            CollapseByTilt();
-    }
-
-    private void UpdateVisual()
-    {
-        if (carrierVisualPivot)
-            carrierVisualPivot.localRotation = Quaternion.Euler(0f, 0f, -tilt);
-    }
-
-    private void UpdateWobbleTelemetry(float dt)
-    {
-        var refT = wobbleReference ? wobbleReference : transform;
-        Vector3 pos = refT.position;
-
-        if (dt > 0f)
-        {
-            Vector3 vel = (pos - _lastWobblePos) / dt;
-            Vector3 acc = (vel - _lastVel) / dt;
-            float tvel = (tilt - _lastTilt) / dt;
-
-            wobbleVelocity = Vector3.Lerp(wobbleVelocity, vel, 0.2f);
-            wobbleAcceleration = Vector3.Lerp(wobbleAcceleration, acc, 0.2f);
-            tiltVelocity = Mathf.Lerp(tiltVelocity, tvel, 0.2f);
-
-            _lastVel = vel;
-        }
-
-        _lastWobblePos = pos;
-        _lastTilt = tilt;
-    }
-
-    // ───────────── Stack Lean (follow-tilt or fallback) ─────────────
-    private void UpdateAndApplyStackLean(float dt)
+    private void UpdateSway(float dt)
     {
         if (!stackPivot) return;
 
-        // No cargo → relax to neutral
-        if (stackPivot.childCount == 0)
-        {
-            _stackLean = Mathf.MoveTowards(_stackLean, 0f, 120f * dt);
-            _stackLeanVel = 0f;
-            stackPivot.localRotation = Quaternion.identity;
-            stackPivot.localPosition = _stackBaseLocalPos;
-            return;
-        }
+        // visual sway from lateral acceleration
+        float accX = transform.InverseTransformVector(sampledAcceleration).x;
+        float target = accX * swayAccToDeg;
 
-        // New mode: visual follows Tilt nearly 1:1
-        if (stackFollowTilt)
-        {
-            float targetDeg = tilt; // visual = logic
+        // when almost stopping, recover to zero
+        Vector2 horizV = new Vector2(sampledVelocity.x, sampledVelocity.z);
+        if (horizV.magnitude < 0.2f) target = 0f;
 
-            if (stackFollowSmooth > 0f)
-            {
-                float s = Mathf.Clamp01(stackFollowSmooth * dt);
-                _stackLean = Mathf.Lerp(_stackLean, targetDeg, s);
-            }
-            else
-            {
-                _stackLean = targetDeg;
-            }
+        // smooth toward target
+        _swayDeg = Mathf.MoveTowards(_swayDeg, target, swayRecoverSpeed * dt);
+        _swayDeg = Mathf.Clamp(_swayDeg, -swayMaxDeg, swayMaxDeg);
 
-            stackPivot.localRotation = Quaternion.Euler(0f, 0f, -_stackLean);
-
-            float sat = Mathf.Max(1e-3f, offsetSaturationDeg);
-            float slideT = Mathf.Clamp(_stackLean / sat, -1f, 1f); // -1..1
-            float offX = slideT * stackLeanMaxOffset;
-            stackPivot.localPosition = _stackBaseLocalPos + new Vector3(offX, 0f, 0f);
-            return;
-        }
-
-        // Fallback: springy visual mode (tilt + lateral accel)
-        Vector3 localAcc = transform.InverseTransformVector(wobbleAcceleration);
-        float target = tilt * stackTiltToLean
-                     + localAcc.x * stackMoveToLean * 12f;
-
-        float heightFactor = Mathf.Clamp(0.9f + comHeight * 0.5f, 0.9f, 1.75f);
-        target *= heightFactor;
-        target = Mathf.Clamp(target, -stackLeanMaxDeg, stackLeanMaxDeg);
-
-        float K = Mathf.Max(0.1f, stackLeanStiffness);
-        float D = Mathf.Max(0f, stackLeanDamping);
-        _stackLeanVel += (target - _stackLean) * K * dt;
-        _stackLeanVel *= 1f / (1f + D * dt);
-        _stackLean += _stackLeanVel * dt;
-        _stackLean = Mathf.Clamp(_stackLean, -stackLeanMaxDeg, stackLeanMaxDeg);
-
-        stackPivot.localRotation = Quaternion.Euler(0f, 0f, -_stackLean);
-        float offX2 = (_stackLean / stackLeanMaxDeg) * stackLeanMaxOffset;
-        stackPivot.localPosition = _stackBaseLocalPos + new Vector3(offX2, 0f, 0f);
+        // apply to base pivot (Z-rotation) + slight x offset
+        stackPivot.localRotation = Quaternion.Euler(0f, 0f, -_swayDeg);
+        Vector3 lp = stackPivot.localPosition;
+        lp.x = _swayDeg * swayXOffsetPerDeg;
+        stackPivot.localPosition = lp;
     }
 
-    private void ResetStackLeanInstant()
+    private void UpdateElasticBend(float dt)
     {
-        _stackLean = 0f; _stackLeanVel = 0f;
-        if (stackPivot)
+        if (!useElasticBend || !stackPivot) return;
+
+        int n = stackPivot.childCount;
+        if (n <= 0) { _bendAngles.Clear(); _bendVels.Clear(); _lastChildCount = 0; return; }
+
+        if (n != _lastChildCount || _bendAngles.Count != n)
         {
-            stackPivot.localRotation = Quaternion.identity;
-            stackPivot.localPosition = _stackBaseLocalPos;
+            EnsureBendState(n);
+            _lastChildCount = n;
+        }
+
+        _tmpChildren.Clear();
+        for (int i = 0; i < n; i++) _tmpChildren.Add(stackPivot.GetChild(i));
+        _tmpChildren.Sort((a, b) => a.localPosition.y.CompareTo(b.localPosition.y)); // bottom→top
+
+        float accX = transform.InverseTransformVector(sampledAcceleration).x;
+        float baseDrive = _swayDeg + accX * bendAccToDrive;
+
+        for (int i = 0; i < n; i++)
+        {
+            float target = (i == 0) ? baseDrive : _bendAngles[i - 1];
+            float angle = _bendAngles[i];
+            float vel = _bendVels[i];
+
+            vel += (target - angle) * Mathf.Max(0.1f, bendStiffness) * dt;
+            vel *= 1f / (1f + Mathf.Max(0f, bendDamping) * dt);
+            angle += vel * dt;
+
+            angle = Mathf.Clamp(angle, -bendMaxDegPerLayer, bendMaxDegPerLayer);
+
+            _bendAngles[i] = angle;
+            _bendVels[i] = vel;
+
+            // visual amplify up the stack
+            float amp = Mathf.Pow(Mathf.Max(1f, bendUpAmplify), i);
+            float visDeg = Mathf.Clamp(angle * amp, -bendMaxDegPerLayer * 2f, bendMaxDegPerLayer * 2f);
+
+            var t = _tmpChildren[i];
+            var e = t.localEulerAngles;
+            e.x = 0f; e.y = 0f; e.z = -visDeg;
+            t.localEulerAngles = e;
+
+            Vector3 lp = t.localPosition;
+            lp.x = visDeg * bendXOffsetPerDeg;
+            t.localPosition = lp;
+        }
+    }
+
+    private void EnsureBendState(int count)
+    {
+        _bendAngles.Clear(); _bendVels.Clear();
+        for (int i = 0; i < count; i++)
+        {
+            _bendAngles.Add(_swayDeg);
+            _bendVels.Add(0f);
         }
     }
 
     private void EnsureStackPivot()
     {
         if (!carrierCargoRoot) return;
-
         if (!stackPivot)
         {
             var go = new GameObject("StackPivot");
@@ -540,22 +367,6 @@ public class CarrierController : MonoBehaviour
             stackPivot.localPosition = Vector3.zero;
             stackPivot.localRotation = Quaternion.identity;
             stackPivot.localScale = Vector3.one;
-            _stackBaseLocalPos = stackPivot.localPosition;
-
-            // migrate existing children (if any) under pivot
-            var toMove = new List<Transform>();
-            for (int i = 0; i < carrierCargoRoot.childCount; i++)
-            {
-                var c = carrierCargoRoot.GetChild(i);
-                if (c == stackPivot) continue;
-                toMove.Add(c);
-            }
-            foreach (var c in toMove)
-                c.SetParent(stackPivot, true);
-        }
-        else
-        {
-            _stackBaseLocalPos = stackPivot.localPosition;
         }
     }
 
@@ -565,50 +376,6 @@ public class CarrierController : MonoBehaviour
         if (!t) return;
         for (int i = t.childCount - 1; i >= 0; i--)
             Destroy(t.GetChild(i).gameObject);
-    }
-
-    private void CollapseByTilt()
-    {
-        if (mounted.Count == 0) { tilt = 0f; return; }
-
-        Vector3 lateralDir = (tilt >= 0f) ? transform.right : -transform.right;
-        float t = Mathf.InverseLerp(fallThreshold, fallThreshold + 20f, Mathf.Abs(tilt));
-        float sideMul = Mathf.Lerp(1f, collapseSideMultiplier, t);
-        float fwdMul = Mathf.Lerp(1f, collapseForwardMultiplier, t);
-        float angMag = Mathf.Lerp(cargoAngularVel, collapseAngular, t);
-
-        Vector3 origin = stackPivot
-            ? stackPivot.position + Vector3.up * 0.1f
-            : (carrierCargoRoot ? carrierCargoRoot.position : transform.position + Vector3.up * 1.1f);
-
-        for (int i = 0; i < mounted.Count; i++)
-        {
-            var m = mounted[i];
-            if (!m) continue;
-
-            float sideSpeed = UnityEngine.Random.Range(cargoSideSpeedRange.x, cargoSideSpeedRange.y) * sideMul;
-            float fwdSpeed = Mathf.Max(0f, cargoForwardSpeed) * fwdMul;
-            float upBias = collapseDownBias;
-
-            Vector3 pos = origin + lateralDir * 0.05f * i + UnityEngine.Random.insideUnitSphere * 0.02f;
-            ApplyDirectionalDrop(m, pos, lateralDir, sideSpeed, fwdSpeed, upBias, angMag);
-        }
-
-        mounted.Clear();
-        ClearVisuals();
-        ResetStackLeanInstant();
-        tilt = 0f;
-    }
-
-    private void SpillAll()
-    {
-        Vector3 origin = stackPivot
-            ? stackPivot.position
-            : (carrierCargoRoot ? carrierCargoRoot.position : transform.position + Vector3.up * 1.2f);
-
-        Vector3 fwd = transform.forward * 0.2f;
-        SpillAllAt(origin, fwd);
-        ResetStackLeanInstant();
     }
 
     private void ApplyRealisticDrop(WorldItem wi, Vector3 pos, Vector3 forwardDir)
@@ -640,45 +407,4 @@ public class CarrierController : MonoBehaviour
         rb.linearVelocity = v;
         rb.angularVelocity = UnityEngine.Random.onUnitSphere * cargoAngularVel;
     }
-
-    private void ApplyDirectionalDrop(WorldItem wi, Vector3 pos, Vector3 lateralDir, float sideSpeed, float forwardSpeed, float upBias, float angularMag)
-    {
-        wi.OnDropped(pos, Vector3.zero);
-
-        if (!wi.rb) wi.rb = wi.GetComponent<Rigidbody>();
-        var rb = wi.rb;
-        if (!rb) return;
-
-        if (configureCargoRigidbodies)
-        {
-            rb.interpolation = RigidbodyInterpolation.Interpolate;
-            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            rb.angularDamping = Mathf.Max(0.2f, rb.angularDamping);
-        }
-
-        if (cargoFrictionMaterial)
-        {
-            var cols = wi.GetComponentsInChildren<Collider>(true);
-            for (int c = 0; c < cols.Length; c++)
-                cols[c].sharedMaterial = cargoFrictionMaterial;
-        }
-
-        Vector3 v = lateralDir.normalized * sideSpeed + transform.forward * Mathf.Max(0f, forwardSpeed) + Vector3.up * upBias;
-        rb.linearVelocity = v;
-        rb.angularVelocity = UnityEngine.Random.onUnitSphere * angularMag;
-    }
-
-#if UNITY_EDITOR
-    void OnDrawGizmosSelected()
-    {
-        if (carrierCargoRoot)
-        {
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawWireCube(
-                carrierCargoRoot.position + Vector3.up * 0.25f,
-                new Vector3(0.4f, 0.5f, 0.3f)
-            );
-        }
-    }
-#endif
 }

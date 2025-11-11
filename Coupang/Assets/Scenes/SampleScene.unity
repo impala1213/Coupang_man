@@ -1192,8 +1192,6 @@ MonoBehaviour:
   interactMask:
     serializedVersion: 2
     m_Bits: 576
-  pickupRadius: 0.45
-  forgivingPickupOnlyInThird: 1
   cameraSwitcher: {fileID: 919132148595775320}
   inventory: {fileID: 919132148595775323}
   carrier: {fileID: 919132148595775322}
@@ -1471,12 +1469,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e39e5d8520618ac46b9ac35d71b35de3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  inventory: {fileID: 0}
+  autoBind: 1
   slotIcons:
   - {fileID: 711384630}
   - {fileID: 1745009665}
   - {fileID: 600599844}
   - {fileID: 709094405}
   - {fileID: 607408465}
+  emptySlotIcon: {fileID: 0}
+  fallbackIcon: {fileID: 0}
   activeColorA: 255
   inactiveColorA: 128
 --- !u!1 &709094403
@@ -3663,58 +3665,32 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cbea7aaa0f962d64d9a306b09a942839, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  active: 0
-  cameraSwitcher: {fileID: 919132148595775320}
   carrierCargoRoot: {fileID: 1892091943}
-  carrierVisualPivot: {fileID: 355447405}
-  showBackVisual: 1
-  backSocket: {fileID: 5728996633736096868}
-  backVisualPrefab: {fileID: 171551781273489351, guid: 7467a0f1bfac3e949a608b42097acabf, type: 3}
-  backLocalPosition: {x: 0, y: 0.2, z: -0.2}
-  backLocalEuler: {x: 0, y: 0, z: 0}
-  backLocalScale: {x: 0.5, y: 0.58, z: 0.19}
-  hideOnDeactivate: 1
-  tilt: 0
-  tiltDrift: 0.1
-  tiltRecoverFactor: 30
-  fallThreshold: 30
-  balancePushSpeed: 55
-  balanceDifficultyPenalty: 0.1
-  driftDifficultyGain: 0.2
-  moveToTilt: 1
-  moveToTiltDifficultyGain: 1
-  moveAccClamp: 0.25
-  moveAccSoftness: 1.2
-  moveAccSmoothing: 12
-  minSpeedForCoupling: 0.4
-  speedFactorExponent: 1
-  tiltRateLimit: 60
+  stackPivot: {fileID: 1084424988}
+  wobbleReference: {fileID: 0}
+  swayAccToDeg: 8
+  swayRecoverSpeed: 80
+  swayMaxDeg: 10
+  swayXOffsetPerDeg: 0.0008
+  useElasticBend: 1
+  bendStiffness: 14
+  bendDamping: 3.5
+  bendAccToDrive: 4
+  bendUpAmplify: 1.1
+  bendMaxDegPerLayer: 8
+  bendXOffsetPerDeg: 0.0006
+  enableImpactSpill: 1
+  fallHeightTrigger: 3
+  impactSpeedTrigger: 8
+  knockSpeedTrigger: 10
   cargoSideSpeedRange: {x: 0.25, y: 0.8}
   cargoForwardSpeed: 0.2
   cargoUpBias: -0.1
   cargoAngularVel: 1.5
   cargoFrictionMaterial: {fileID: 0}
   configureCargoRigidbodies: 1
-  collapseSideMultiplier: 1.4
-  collapseForwardMultiplier: 1.1
-  collapseDownBias: -0.15
-  collapseAngular: 2.2
-  stackPivot: {fileID: 1084424988}
-  stackLeanStiffness: 8
-  stackLeanDamping: 2
-  stackTiltToLean: 0.6
-  stackMoveToLean: 0.35
-  stackLeanMaxDeg: 12
-  stackLeanMaxOffset: 0.04
-  stackFollowTilt: 1
-  stackFollowSmooth: 10
-  offsetSaturationDeg: 25
-  wobbleReference: {fileID: 0}
-  wobbleVelocity: {x: 0, y: 0, z: 0}
-  wobbleAcceleration: {x: 0, y: 0, z: 0}
-  tiltVelocity: 0
   totalWeight: 0
-  comHeight: 0
+  stackTotalHeight: 0
 --- !u!114 &919132148595775323
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3728,8 +3704,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   slotCount: 5
-  ui: {fileID: 688996690}
-  player: {fileID: 649882116}
+  carrier: {fileID: 919132148595775322}
+  activeIndex: 0
+  slots: []
 --- !u!4 &1119876174032157067
 Transform:
   m_ObjectHideFlags: 0
