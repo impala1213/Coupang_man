@@ -15,6 +15,8 @@ GameObject:
   - component: {fileID: 6686076876144876446}
   - component: {fileID: 1113673582431846235}
   - component: {fileID: 1582182870244601531}
+  - component: {fileID: 7216851662328307162}
+  - component: {fileID: 3227698365231234657}
   m_Layer: 6
   m_Name: TestItem
   m_TagString: WorldItem
@@ -137,7 +139,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!114 &1113673582431846235
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -165,3 +167,31 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   definition: {fileID: 11400000, guid: 1995a7efd85113243b9761ee1cb486ad, type: 2}
+--- !u!114 &7216851662328307162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2635283057471754944}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9ef59ab4ebbfda449f0b94c7f761731, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  minSpeed: 6
+  damagePerUnit: 5
+--- !u!114 &3227698365231234657
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2635283057471754944}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40b0279f9b9c4f2418e26ac2bfb8cb3e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  max: 100
+  current: 100

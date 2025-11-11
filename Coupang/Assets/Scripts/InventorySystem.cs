@@ -10,15 +10,26 @@ public class InventorySystem : MonoBehaviour
     public int slotCount = 5;
 
     [Header("Refs")]
-    public CarrierController carrier; // assign Player's CarrierController
+    public CarrierController carrier;
 
     [Header("State (read-only)")]
     public int activeIndex = 0;
 
+    public event Action OnInventoryChanged;   // ← 추가
+
+    [Serializable]
+    public class ItemStackData
+    {
+        public ItemDefinition def;
+        public int size;
+        public int durCurrent = -1;
+        public int durMax = -1;
+    }
+
     [Serializable]
     public class Slot
     {
-        public ItemDefinition def;
+        public ItemStackData stack;
     }
 
     public List<Slot> slots = new List<Slot>();
@@ -31,26 +42,26 @@ public class InventorySystem : MonoBehaviour
             for (int i = 0; i < slotCount; i++) slots.Add(new Slot());
         }
         activeIndex = Mathf.Clamp(activeIndex, 0, slotCount - 1);
+        if (!carrier) carrier = FindFirstObjectByType<CarrierController>();
     }
 
-    // ─────────── Query ───────────
-    public bool IsEmpty(int i) => i >= 0 && i < slots.Count && slots[i].def == null;
-    public ItemDefinition Get(int i) => (i >= 0 && i < slots.Count) ? slots[i].def : null;
+    // ── Query
+    public bool IsEmpty(int i) => i >= 0 && i < slots.Count && slots[i].stack == null;
+    public ItemDefinition Get(int i) => (i >= 0 && i < slots.Count && slots[i].stack != null) ? slots[i].stack.def : null;
     public ItemDefinition ActiveDef() => Get(activeIndex);
 
     public bool HasCarrierInInventory()
     {
         for (int i = 0; i < slots.Count; i++)
         {
-            var d = slots[i].def;
-            if (d != null && d.isCarrier) return true;
+            var s = slots[i].stack;
+            if (s != null && s.def != null && s.def.isCarrier) return true;
         }
         return false;
     }
 
     public bool HasSpaceFor(int required)
     {
-        // contiguous 1..required (required <= slotCount)
         for (int start = 0; start <= slotCount - required; start++)
         {
             bool ok = true;
@@ -73,85 +84,82 @@ public class InventorySystem : MonoBehaviour
         return -1;
     }
 
-    // ─────────── Control ───────────
+    // ── Control
     public void SetActiveIndex(int idx)
     {
         activeIndex = Mathf.Clamp(idx, 0, slotCount - 1);
-        // auto-equip semantics are handled by PlayerController (use on LMB etc.)
+        OnInventoryChanged?.Invoke();                 // ← 추가
     }
 
     public bool TryPickupWorldItem(WorldItem worldItem)
     {
-        if (!worldItem || !worldItem.definition) return false;
+        if (!worldItem || !worldItem.definition)
+        {
+            Debug.LogWarning("[InventorySystem] WorldItem/definition null.");
+            return false;
+        }
+
         var def = worldItem.definition;
-
-        // If there is space, always pick into inventory
         int need = Mathf.Clamp(def.slotSize, 1, slotCount);
-        int where = FindContiguousSpace(need);
 
+        int where = FindContiguousSpace(need);
         if (where >= 0)
         {
-            // pick into inventory
+            // durability snapshot
+            int cur = -1, max = -1;
+            if (worldItem.TryGetDurability(out var c, out var m)) { cur = c; max = m; }
+
+            var data = new ItemStackData { def = def, size = need, durCurrent = cur, durMax = max };
             for (int k = 0; k < need; k++)
-                slots[where + k].def = def;
-            worldItem.OnPickedUp();
-            // set active to start of the placed block for convenience
+                slots[where + k].stack = data;
+
+            worldItem.OnPickedUp(true);               // 원본 파괴
             activeIndex = where;
+            OnInventoryChanged?.Invoke();             // ← 추가
             return true;
         }
 
-        // No space: if we have a carrier item somewhere, mount to carrier (for cargo-like)
-        if (HasCarrierInInventory() && carrier != null)
+        if (HasCarrierInInventory())
         {
-            // do not mount the carrier item itself
-            if (!def.isCarrier)
-            {
-                // treat everything as cargo-like per design
-                return carrier.TryMount(worldItem);
-            }
+            if (!carrier) carrier = FindFirstObjectByType<CarrierController>();
+            if (!carrier) { Debug.LogWarning("[InventorySystem] Carrier ref missing."); return false; }
+            if (!def.isCarrier) return carrier.TryMount(worldItem);
         }
 
-        // no space and no carrier to mount
         return false;
     }
 
     public bool DropActiveItem(Transform dropOrigin, Vector3 forward)
     {
-        var def = ActiveDef();
-        if (!def) return false;
+        var head = (activeIndex >= 0 && activeIndex < slots.Count) ? slots[activeIndex].stack : null;
+        if (head == null || head.def == null) return false;
 
+        var def = head.def;
         Vector3 pos = dropOrigin ? dropOrigin.position + forward * 0.6f + Vector3.up * 0.5f
                                  : transform.position + transform.forward * 0.6f + Vector3.up * 0.5f;
 
-        // If dropping the carrier itself: spill all mounted cargo too
         if (def.isCarrier && carrier != null && carrier.HasAnyMounted())
-        {
             carrier.SpillAllOnCarrierDrop(pos, forward);
-        }
 
-        // instantiate world prefab for the dropped item
         if (def.worldPrefab)
         {
-            var go = GameObject.Instantiate(def.worldPrefab, pos, Quaternion.identity);
-            var wi = go.GetComponent<WorldItem>();
-            if (wi && wi.definition == null) wi.definition = def;
+            var go = Instantiate(def.worldPrefab, pos, Quaternion.identity);
+            go.name = def.worldPrefab.name;
+
+            var wi = go.GetComponent<WorldItem>() ?? go.AddComponent<WorldItem>();
+            wi.definition = def;
+
+            if (head.durCurrent >= 0 || head.durMax > 0)
+                wi.ApplyDurability(head.durCurrent, head.durMax, true);
         }
 
-        // clear occupied slots for that item block
-        int need = Mathf.Clamp(def.slotSize, 1, slotCount);
-        // wipe consecutive block starting at activeIndex if it matches def
-        int start = activeIndex;
-        for (int k = 0; k < need; k++)
-        {
-            int idx = start + k;
-            if (idx < 0 || idx >= slots.Count) break;
-            if (slots[idx].def == def) slots[idx].def = null;
-        }
+        for (int i = 0; i < slots.Count; i++)
+            if (slots[i].stack == head) slots[i].stack = null;
 
-        // move active to a valid position
-        while (activeIndex > 0 && slots[activeIndex].def == null && slots[activeIndex - 1].def == null)
+        while (activeIndex > 0 && slots[activeIndex].stack == null && slots[activeIndex - 1].stack == null)
             activeIndex--;
 
+        OnInventoryChanged?.Invoke();                 // ← 추가
         return true;
     }
 }

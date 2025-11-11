@@ -161,7 +161,7 @@ public class CarrierController : MonoBehaviour
         if (!world || !world.definition) return false;
         if (world.definition.isCarrier) return false;
 
-        world.OnPickedUp();
+        world.OnPickedUp(false);
         EnsureStackPivot();
 
         float currentY = 0f;
