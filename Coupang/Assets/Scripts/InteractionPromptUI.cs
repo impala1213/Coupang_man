@@ -20,6 +20,9 @@ public class InteractionPromptUI : MonoBehaviour
     public string loadText = "Press E to load";
     public string pickUpCarrierText = "Press E to pick up carrier";
 
+    [Header("Texts (Lever)")]
+    public string leverText = "Hold E to operate lever";
+
     void Awake()
     {
         if (!player) player = FindFirstObjectByType<PlayerController>();
@@ -37,6 +40,14 @@ public class InteractionPromptUI : MonoBehaviour
     {
         if (!player || !label) { Hide(); return; }
 
+        // 1) Lever has focus -> show lever-specific prompt
+        if (InteractionLock.LeverHasFocus)
+        {
+            Show(leverText);
+            return;
+        }
+
+        // 2) No lever -> fallback to item prompt as before
         if (player.FindInteractCandidate(out var world))
         {
             if (BuildText(world, out var prompt))
@@ -58,14 +69,14 @@ public class InteractionPromptUI : MonoBehaviour
         var def = world.definition;
         string baseText = pickUpText;
 
-        // 1) 캐리어 자체면 항상 "pick up carrier"
+        // 1) Carrier item -> always "pick up carrier"
         if (def != null && def.isCarrier)
         {
             baseText = pickUpCarrierText;
         }
         else
         {
-            // 2) 일반 아이템: 인벤토리 연속 슬롯이 없고, 캐리어 아이템을 보유 중이면 "load"
+            // 2) Normal item: no contiguous space and having carrier -> "load"
             if (inventory != null && def != null)
             {
                 int need = Mathf.Clamp(def.slotSize, 1, inventory.slotCount);

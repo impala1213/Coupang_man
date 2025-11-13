@@ -8,6 +8,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Ship.unity
     guid: 99c9720ab356a0642a771bea13969a05
+  - enabled: 1
+    path: Assets/Scenes/Gameplay.unity
+    guid: 3dbfbcf3027acff409d6665ee2ddd7d6
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 56ed98e570f21204fa733469cf1e16f9, type: 3}
   m_UseUCBPForAssetBundles: 0

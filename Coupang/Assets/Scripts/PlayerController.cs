@@ -1,4 +1,3 @@
-// Assets/Scripts/Player/PlayerController.cs
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -12,16 +11,19 @@ public class PlayerController : MonoBehaviour
 
     [Header("Interaction")]
     public float interactDistance = 3f;
-    public LayerMask interactMask;
+    public LayerMask interactMask;   // items, carriers, levers all use this
 
     [Header("Refs")]
-    public CameraSwitcher cameraSwitcher; // still used to get active camera ray origin
+    public CameraSwitcher cameraSwitcher;
     public InventorySystem inventory;
-    public CarrierController carrier;     // assign same as InventorySystem.carrier
+    public CarrierController carrier;
     public Transform dropOrigin;
 
     private CharacterController controller;
     private float verticalVel;
+
+    // Lever focus
+    private UniversalLever currentLever;
 
     void Awake()
     {
@@ -34,9 +36,14 @@ public class PlayerController : MonoBehaviour
     {
         Move();
         HandleHotbar();
+        UpdateInteractionFocus();
         HandleActions();
 
-        // report grounded state & kinematics to carrier (for fall/impact spill logic)
+        if (currentLever != null)
+        {
+            currentLever.Tick(Time.deltaTime);
+        }
+
         if (carrier)
         {
             Vector3 pos = transform.position;
@@ -47,6 +54,7 @@ public class PlayerController : MonoBehaviour
 
     void Move()
     {
+        if (!controller || !controller.enabled) return;
         bool grounded = controller.isGrounded;
         float h = Input.GetAxisRaw("Horizontal");
         float v = Input.GetAxisRaw("Vertical");
@@ -74,13 +82,45 @@ public class PlayerController : MonoBehaviour
 
     void HandleActions()
     {
+        // E pressed
         if (Input.GetKeyDown(KeyCode.E))
         {
+            // If a lever is focused, start lever hold and skip pickup
+            if (currentLever != null)
+            {
+                currentLever.OnUsePressed();
+                return;
+            }
+
+            // Safety: if lever focus lock is on, skip item pickup
+            if (InteractionLock.LeverHasFocus)
+            {
+                return;
+            }
+
             Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
-            if (cam && Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit, interactDistance, interactMask, QueryTriggerInteraction.Ignore))
+            if (cam && Physics.Raycast(
+                    cam.transform.position,
+                    cam.transform.forward,
+                    out RaycastHit hit,
+                    interactDistance,
+                    interactMask,
+                    QueryTriggerInteraction.Collide)) // allow triggers for items/carriers as well
             {
                 var worldItem = hit.collider.GetComponentInParent<WorldItem>();
-                if (worldItem) inventory.TryPickupWorldItem(worldItem);
+                if (worldItem)
+                {
+                    inventory.TryPickupWorldItem(worldItem);
+                }
+            }
+        }
+
+        // E released
+        if (Input.GetKeyUp(KeyCode.E))
+        {
+            if (currentLever != null)
+            {
+                currentLever.OnUseReleased();
             }
         }
 
@@ -90,15 +130,70 @@ public class PlayerController : MonoBehaviour
             inventory.DropActiveItem(dropOrigin ? dropOrigin : transform, fwd);
         }
 
-        // LMB: use active item (generic)
         if (Input.GetMouseButtonDown(0))
         {
-            // implement item use here if needed (consumable/fire/etc.)
+            // use active item (to be implemented)
         }
     }
+
+    void UpdateInteractionFocus()
+    {
+        Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+        if (!cam)
+        {
+            ClearLeverFocus();
+            return;
+        }
+
+        // Same ray / mask as items
+        if (Physics.Raycast(
+                cam.transform.position,
+                cam.transform.forward,
+                out RaycastHit hit,
+                interactDistance,
+                interactMask,
+                QueryTriggerInteraction.Collide)) // triggers allowed
+        {
+            UniversalLever lever = hit.collider.GetComponentInParent<UniversalLever>();
+            if (lever != currentLever)
+            {
+                if (currentLever != null)
+                {
+                    currentLever.OnFocusExit();
+                }
+
+                currentLever = lever;
+
+                if (currentLever != null)
+                {
+                    currentLever.OnFocusEnter();
+                }
+            }
+        }
+        else
+        {
+            ClearLeverFocus();
+        }
+    }
+
+    void ClearLeverFocus()
+    {
+        if (currentLever != null)
+        {
+            currentLever.OnFocusExit();
+            currentLever = null;
+        }
+    }
+
     public bool FindInteractCandidate(out WorldItem world)
     {
         world = null;
+
+        // While lever has focus, do not report world items
+        if (InteractionLock.LeverHasFocus)
+        {
+            return false;
+        }
 
         Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
         if (!cam) return false;
@@ -109,7 +204,7 @@ public class PlayerController : MonoBehaviour
             out RaycastHit hit,
             interactDistance,
             interactMask,
-            QueryTriggerInteraction.Ignore))
+            QueryTriggerInteraction.Collide))
         {
             world = hit.collider.GetComponentInParent<WorldItem>();
             return world != null;
@@ -117,5 +212,4 @@ public class PlayerController : MonoBehaviour
 
         return false;
     }
-
 }

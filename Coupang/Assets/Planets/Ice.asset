@@ -9,8 +9,20 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 96927f7760c03094ab9540841a3fc235, type: 3}
+  m_Script: {fileID: 11500000, guid: 6c58329acfc69004b992d042e93b63ef, type: 3}
   m_Name: Ice
   m_EditorClassIdentifier: 
-  type: 0
-  terrain: {fileID: 11400000, guid: 19998c24b85a7544dbb720c2f20dab99, type: 2}
+  mapWidth: 64
+  mapLength: 64
+  tileSize: 4
+  baseHeight: 0
+  heightScale: 6
+  noiseScale: 10
+  noiseOctaves: 1
+  noiseLacunarity: 2
+  noisePersistence: 0.5
+  landingRadius: 20
+  landingFalloff: 5
+  groundTilePrefab: {fileID: 551841962105457896, guid: ac50ff9996922ba4f866a3065041c7cc, type: 3}
+  groundMaterialOverride: {fileID: 2100000, guid: b994866080c881748925fabd860368a3, type: 2}
+  terrainModule: {fileID: 11400000, guid: 5790b92912b612b48b5ee666984e86ce, type: 2}
