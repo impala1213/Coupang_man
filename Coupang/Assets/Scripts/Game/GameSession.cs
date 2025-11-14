@@ -270,8 +270,9 @@ public class GameSession : MonoBehaviour
 
         if (landingHelper == null)
         {
-            landingHelper = Object.FindObjectOfType<LandingHelper>(true);
+            landingHelper = Object.FindFirstObjectByType<LandingHelper>(FindObjectsInactive.Include);
         }
+
     }
 
     private void MoveContainerAndPlayerToGameplay()

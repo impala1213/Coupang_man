@@ -5,6 +5,8 @@ public class LandingHelper : MonoBehaviour
     public Transform terrainParent;
     public Transform planetContainerAnchor;
     public MapRunner mapRunner;
+    [Header("Landing")]
+    public float landingHeightOffset = 1.0f; 
 
     public bool IsEssentialReady { get; private set; }
     public Transform PlanetContainerAnchor => planetContainerAnchor;
@@ -57,11 +59,13 @@ public class LandingHelper : MonoBehaviour
         RaycastHit hit;
         if (Physics.Raycast(rayOrigin, Vector3.down, out hit, 500f, ~0, QueryTriggerInteraction.Ignore))
         {
-            planetContainerAnchor.position = hit.point + Vector3.up * 2f;
+            planetContainerAnchor.position = hit.point + Vector3.up * landingHeightOffset;
+
         }
         else
         {
-            planetContainerAnchor.position = hint + Vector3.up * 2f;
+            planetContainerAnchor.position = hint + Vector3.up * landingHeightOffset;
+
         }
     }
 }

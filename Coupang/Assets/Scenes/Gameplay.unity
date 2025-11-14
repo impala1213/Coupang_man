@@ -343,7 +343,8 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
-    m_RemovedGameObjects: []
+    m_RemovedGameObjects:
+    - {fileID: 3735544398847315390, guid: 3c5ce67e038a0ee44888c2635639da4b, type: 3}
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 3c5ce67e038a0ee44888c2635639da4b, type: 3}
@@ -517,6 +518,7 @@ MonoBehaviour:
   terrainParent: {fileID: 1444500474}
   planetContainerAnchor: {fileID: 0}
   mapRunner: {fileID: 1444500476}
+  landingHeightOffset: 0.1
 --- !u!114 &1444500476
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -530,7 +532,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   terrainParent: {fileID: 67993025}
-  defaultTerrainModule: {fileID: 11400000, guid: 5790b92912b612b48b5ee666984e86ce, type: 2}
+  defaultTerrainModule: {fileID: 11400000, guid: a878468eca42eb9409058fc4502093e5, type: 2}
   overrideProfile: 0
   profileOverride: {fileID: 0}
 --- !u!1660057539 &9223372036854775807

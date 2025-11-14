@@ -12,17 +12,55 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6c58329acfc69004b992d042e93b63ef, type: 3}
   m_Name: Ice
   m_EditorClassIdentifier: 
-  mapWidth: 64
-  mapLength: 64
-  tileSize: 4
+  mapWidth: 128
+  mapLength: 128
+  tileSize: 5
   baseHeight: 0
-  heightScale: 6
-  noiseScale: 10
-  noiseOctaves: 1
+  heightScale: 80
+  noiseScale: 0.002
+  noiseOctaves: 3
   noiseLacunarity: 2
-  noisePersistence: 0.5
-  landingRadius: 20
-  landingFalloff: 5
-  groundTilePrefab: {fileID: 551841962105457896, guid: ac50ff9996922ba4f866a3065041c7cc, type: 3}
+  noisePersistence: 1
+  landingRadius: 40
+  landingFalloff: 20
+  useLandingCorridor: 1
+  corridorHalfWidth: 8
+  corridorLength: 30
+  corridorMaxHeightOffset: 0
+  groundTilePrefab: {fileID: 0}
   groundMaterialOverride: {fileID: 2100000, guid: b994866080c881748925fabd860368a3, type: 2}
-  terrainModule: {fileID: 11400000, guid: 5790b92912b612b48b5ee666984e86ce, type: 2}
+  terrainModule: {fileID: 11400000, guid: a878468eca42eb9409058fc4502093e5, type: 2}
+  structures:
+  - prefab: {fileID: 919132149155446097, guid: f1e8e1bfafe7fa241ba6b4181f3eba85, type: 3}
+    minCount: 10
+    maxCount: 20
+    minHeight: 0
+    maxHeight: 60
+    maxSlope: 60
+    avoidLandingZone: 1
+    extraYOffset: 0
+    alignToTerrainNormal: 0
+  monsters:
+  - prefab: {fileID: 7962199819078159310, guid: f5b41ba4c79702547a89de7544b80656, type: 3}
+    minCount: 5
+    maxCount: 10
+    minHeight: 0
+    maxHeight: 40
+    maxSlope: 60
+    avoidLandingZone: 1
+    minRadiusFromCenter: 50
+    maxRadiusFromCenter: 100
+    extraYOffset: 0
+    alignToTerrainNormal: 1
+  items:
+  - itemDefinition: {fileID: 11400000, guid: 1995a7efd85113243b9761ee1cb486ad, type: 2}
+    minCount: 10
+    maxCount: 20
+    minHeight: 0
+    maxHeight: 40
+    maxSlope: 60
+    avoidLandingZone: 1
+    minRadiusFromCenter: 35
+    maxRadiusFromCenter: 100
+    extraYOffset: 0
+    alignToTerrainNormal: 1

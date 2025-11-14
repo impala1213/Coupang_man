@@ -40,7 +40,10 @@ public class ContainerAutoParent : MonoBehaviour
 
         Scene zoneScene = gameObject.scene;
         Bounds bounds = zoneCollider.bounds;
-        WorldItem[] allWorldItems = FindObjectsOfType<WorldItem>();
+        WorldItem[] allWorldItems = Object.FindObjectsByType<WorldItem>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None
+        );
 
         foreach (var wi in allWorldItems)
         {
