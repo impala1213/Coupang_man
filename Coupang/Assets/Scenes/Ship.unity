@@ -1233,6 +1233,10 @@ PrefabInstance:
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3668912358656139565, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
+      propertyPath: runSpeed
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668912358656139565, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
       propertyPath: m_Enabled
       value: 1
       objectReference: {fileID: 0}
@@ -1242,7 +1246,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3668912358656139565, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
       propertyPath: attackRange
-      value: 20
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 3668912358656139565, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
+      propertyPath: attackHitDelay
+      value: 0.6
       objectReference: {fileID: 0}
     - target: {fileID: 4423984557153953952, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
       propertyPath: m_Constraints
@@ -1272,7 +1280,10 @@ PrefabInstance:
     - {fileID: 5612423590206130935, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 137747578756272356, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 832570076}
   m_SourcePrefab: {fileID: 100100000, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
 --- !u!1 &554144483
 GameObject:
@@ -1686,6 +1697,26 @@ RectTransform:
   m_AnchoredPosition: {x: -5, y: 0}
   m_SizeDelta: {x: -20, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!1 &832570075 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 137747578756272356, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
+  m_PrefabInstance: {fileID: 465020917}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &832570076
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 832570075}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e700440311a4c4143a7eec70d97171b9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enableKnockback: 1
+  knockbackForce: 80
+  spillCargo: 1
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -3255,6 +3286,18 @@ PrefabInstance:
     - target: {fileID: 2031955981970050554, guid: c0e89e3c1fc970249b71ba242273ee3a, type: 3}
       propertyPath: jumpForce
       value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 2031955981970050554, guid: c0e89e3c1fc970249b71ba242273ee3a, type: 3}
+      propertyPath: knockbackDamping
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 2031955981970050554, guid: c0e89e3c1fc970249b71ba242273ee3a, type: 3}
+      propertyPath: knockbackUpFactor
+      value: 0.3
+      objectReference: {fileID: 0}
+    - target: {fileID: 2031955981970050554, guid: c0e89e3c1fc970249b71ba242273ee3a, type: 3}
+      propertyPath: knockdownDuration
+      value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: 4085519168744559420, guid: c0e89e3c1fc970249b71ba242273ee3a, type: 3}
       propertyPath: m_Name

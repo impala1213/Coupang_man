@@ -29,11 +29,14 @@ public class PolarBearAI : MonoBehaviour
     public float loseSightTime = 3f;
 
     [Header("Combat")]
-    public float attackRange = 2.5f;         // 공격 시도 거리
-    public float attackCooldown = 1.5f;      // 공격 쿨다운
-    public int attackDamage = 20;            // 공격 데미지
-    public Transform attackOrigin;           // 없으면 곰 중심
-    public float attackExtraRadius = 0.5f;   // 여유 거리(살짝 더 멀어도 맞은 걸로)
+    public float attackRange = 2.5f;
+    public float attackCooldown = 1.5f;
+    public int attackDamage = 20;
+    public Transform attackOrigin;
+    public float attackExtraRadius = 0.5f;
+
+    [Header("Combat Timing")]
+    public float attackHitDelay = 0.4f; // 공격 시작 후 이 시간 지나면 데미지+넉백
 
     [Header("Drops")]
     public ItemDefinition dropItem;
@@ -63,6 +66,11 @@ public class PolarBearAI : MonoBehaviour
 
     private float animSpeed;
     private Vector3 lastPosition;
+
+    // 공격 1회당 히트 딜레이용
+    private bool pendingAttackHit;
+    private bool hasAppliedDamageThisAttack;
+    private float attackHitTimer;
 
     void Awake()
     {
@@ -116,6 +124,7 @@ public class PolarBearAI : MonoBehaviour
 
         ApplyGravity();
         UpdateAnimatorByPosition();
+        UpdateAttackHitTimer(); // ★ 히트 딜레이 처리
 
         lastPosition = transform.position;
     }
@@ -346,7 +355,28 @@ public class PolarBearAI : MonoBehaviour
             animator.SetTrigger(attackTriggerParam);
         }
 
-        TryApplyDamageToPlayer();
+        // 히트 딜레이 초기화
+        pendingAttackHit = true;
+        hasAppliedDamageThisAttack = false;
+        attackHitTimer = Mathf.Max(0f, attackHitDelay);
+    }
+
+    private void UpdateAttackHitTimer()
+    {
+        if (!pendingAttackHit || hasAppliedDamageThisAttack)
+            return;
+
+        attackHitTimer -= Time.deltaTime;
+        if (attackHitTimer <= 0f)
+        {
+            pendingAttackHit = false;
+            hasAppliedDamageThisAttack = true;
+
+            if (!health.IsDead())
+            {
+                TryApplyDamageToPlayer();
+            }
+        }
     }
 
     private void TryApplyDamageToPlayer()
@@ -385,6 +415,7 @@ public class PolarBearAI : MonoBehaviour
         if (targetHealth != null)
         {
             targetHealth.ApplyDamage(attackDamage);
+
             if (debugAttack)
             {
                 Debug.Log($"PolarBear hit player for {attackDamage} damage");
@@ -396,6 +427,13 @@ public class PolarBearAI : MonoBehaviour
             {
                 Debug.Log("Player has no Health component");
             }
+        }
+
+        // 공격 성공 시점에만 넉백
+        EnemyKnockback knock = GetComponent<EnemyKnockback>();
+        if (knock != null && targetHealth != null)
+        {
+            knock.ApplyKnockbackTo(player);
         }
     }
 

@@ -1,3 +1,4 @@
+// Assets/Scripts/Player/PlayerController.cs
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -11,7 +12,11 @@ public class PlayerController : MonoBehaviour
 
     [Header("Interaction")]
     public float interactDistance = 3f;
-    public LayerMask interactMask;   // items, carriers, levers all use this
+    public LayerMask interactMask;
+
+    [Header("Lever")]
+    public float leverInteractDistance = 3f;
+    public LayerMask leverMask;
 
     [Header("Refs")]
     public CameraSwitcher cameraSwitcher;
@@ -19,11 +24,24 @@ public class PlayerController : MonoBehaviour
     public CarrierController carrier;
     public Transform dropOrigin;
 
+    [Header("Knockback")]
+    public bool canBeKnockedBack = true;
+    public float knockbackDamping = 5f;
+    public float knockbackUpFactor = 0.5f;
+    public float knockdownDuration = 0.6f;
+
+    [Header("Debug")]
+    public bool debugLever;
+
     private CharacterController controller;
     private float verticalVel;
 
-    // Lever focus
+    private Vector3 knockbackVelocity;
+    private bool isKnockedDown;
+    private float knockdownTimer;
+
     private UniversalLever currentLever;
+    private bool leverUseHeld;
 
     void Awake()
     {
@@ -35,14 +53,9 @@ public class PlayerController : MonoBehaviour
     void Update()
     {
         Move();
+        UpdateLeverFocusAndTick();
         HandleHotbar();
-        UpdateInteractionFocus();
         HandleActions();
-
-        if (currentLever != null)
-        {
-            currentLever.Tick(Time.deltaTime);
-        }
 
         if (carrier)
         {
@@ -54,25 +67,57 @@ public class PlayerController : MonoBehaviour
 
     void Move()
     {
-        if (!controller || !controller.enabled) return;
         bool grounded = controller.isGrounded;
-        float h = Input.GetAxisRaw("Horizontal");
-        float v = Input.GetAxisRaw("Vertical");
+        bool blockInput = isKnockedDown;
+
+        float h = blockInput ? 0f : Input.GetAxisRaw("Horizontal");
+        float v = blockInput ? 0f : Input.GetAxisRaw("Vertical");
 
         Vector3 moveLocal = new Vector3(h, 0f, v).normalized;
         Vector3 moveWorld = transform.TransformDirection(moveLocal);
 
         float baseSpeed = Input.GetKey(KeyCode.LeftShift) ? sprintSpeed : walkSpeed;
-        controller.Move(moveWorld * baseSpeed * Time.deltaTime);
 
-        if (grounded && verticalVel < 0) verticalVel = -2f;
-        if (Input.GetKeyDown(KeyCode.Space) && grounded) verticalVel = jumpForce;
+        Vector3 horizontalVel = moveWorld * baseSpeed;
+        Vector3 knockHoriz = new Vector3(knockbackVelocity.x, 0f, knockbackVelocity.z);
+        horizontalVel += knockHoriz;
+
+        controller.Move(horizontalVel * Time.deltaTime);
+
+        if (grounded && verticalVel < 0f) verticalVel = -2f;
+        if (!blockInput && Input.GetKeyDown(KeyCode.Space) && grounded) verticalVel = jumpForce;
         verticalVel += gravity * Time.deltaTime;
-        controller.Move(Vector3.up * verticalVel * Time.deltaTime);
+
+        float totalY = verticalVel + knockbackVelocity.y;
+        controller.Move(Vector3.up * totalY * Time.deltaTime);
+
+        if (knockbackVelocity.sqrMagnitude > 0.01f)
+        {
+            knockbackVelocity = Vector3.Lerp(
+                knockbackVelocity,
+                Vector3.zero,
+                knockbackDamping * Time.deltaTime
+            );
+        }
+        else
+        {
+            knockbackVelocity = Vector3.zero;
+        }
+
+        if (isKnockedDown)
+        {
+            knockdownTimer -= Time.deltaTime;
+            if (knockdownTimer <= 0f)
+            {
+                isKnockedDown = false;
+            }
+        }
     }
 
     void HandleHotbar()
     {
+        if (!inventory) return;
+
         if (Input.GetKeyDown(KeyCode.Alpha1)) inventory.SetActiveIndex(0);
         if (Input.GetKeyDown(KeyCode.Alpha2)) inventory.SetActiveIndex(1);
         if (Input.GetKeyDown(KeyCode.Alpha3)) inventory.SetActiveIndex(2);
@@ -82,61 +127,60 @@ public class PlayerController : MonoBehaviour
 
     void HandleActions()
     {
-        // E pressed
         if (Input.GetKeyDown(KeyCode.E))
         {
-            // If a lever is focused, start lever hold and skip pickup
             if (currentLever != null)
             {
+                leverUseHeld = true;
                 currentLever.OnUsePressed();
-                return;
             }
-
-            // Safety: if lever focus lock is on, skip item pickup
-            if (InteractionLock.LeverHasFocus)
+            else
             {
-                return;
-            }
+                if (InteractionLock.LeverHasFocus)
+                    return;
 
-            Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
-            if (cam && Physics.Raycast(
-                    cam.transform.position,
-                    cam.transform.forward,
-                    out RaycastHit hit,
-                    interactDistance,
-                    interactMask,
-                    QueryTriggerInteraction.Collide)) // allow triggers for items/carriers as well
-            {
-                var worldItem = hit.collider.GetComponentInParent<WorldItem>();
-                if (worldItem)
+                Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+                if (cam && Physics.Raycast(
+                        cam.transform.position,
+                        cam.transform.forward,
+                        out RaycastHit hit,
+                        interactDistance,
+                        interactMask,
+                        QueryTriggerInteraction.Collide))
                 {
-                    inventory.TryPickupWorldItem(worldItem);
+                    var worldItem = hit.collider.GetComponentInParent<WorldItem>();
+                    if (worldItem && inventory != null)
+                    {
+                        inventory.TryPickupWorldItem(worldItem);
+                    }
                 }
             }
         }
 
-        // E released
         if (Input.GetKeyUp(KeyCode.E))
         {
             if (currentLever != null)
             {
+                leverUseHeld = false;
                 currentLever.OnUseReleased();
             }
         }
 
         if (Input.GetKeyDown(KeyCode.G))
         {
+            if (!inventory) return;
             Vector3 fwd = transform.forward;
-            inventory.DropActiveItem(dropOrigin ? dropOrigin : transform, fwd);
+            Transform origin = dropOrigin ? dropOrigin : transform;
+            inventory.DropActiveItem(origin, fwd);
         }
 
         if (Input.GetMouseButtonDown(0))
         {
-            // use active item (to be implemented)
+            // active item use hook
         }
     }
 
-    void UpdateInteractionFocus()
+    void UpdateLeverFocusAndTick()
     {
         Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
         if (!cam)
@@ -145,34 +189,57 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // Same ray / mask as items
+        float dist = leverInteractDistance > 0f ? leverInteractDistance : interactDistance;
+
+        LayerMask combinedMask = interactMask;
+        if (leverMask.value != 0)
+        {
+            combinedMask |= leverMask;
+        }
+
+        UniversalLever hitLever = null;
+
         if (Physics.Raycast(
                 cam.transform.position,
                 cam.transform.forward,
                 out RaycastHit hit,
-                interactDistance,
-                interactMask,
-                QueryTriggerInteraction.Collide)) // triggers allowed
+                dist,
+                combinedMask,
+                QueryTriggerInteraction.Collide))
         {
-            UniversalLever lever = hit.collider.GetComponentInParent<UniversalLever>();
-            if (lever != currentLever)
+            hitLever = hit.collider.GetComponentInParent<UniversalLever>();
+
+            if (debugLever)
             {
-                if (currentLever != null)
-                {
-                    currentLever.OnFocusExit();
-                }
-
-                currentLever = lever;
-
-                if (currentLever != null)
-                {
-                    currentLever.OnFocusEnter();
-                }
+                Debug.Log($"Lever ray hit: {hit.collider.name}, lever = {(hitLever ? hitLever.name : "none")}");
             }
         }
         else
         {
-            ClearLeverFocus();
+            if (debugLever)
+            {
+                Debug.Log("Lever ray hit nothing");
+            }
+        }
+
+        if (hitLever != currentLever)
+        {
+            if (currentLever != null)
+            {
+                currentLever.FocusExit();
+            }
+
+            currentLever = hitLever;
+
+            if (currentLever != null)
+            {
+                currentLever.FocusEnter();
+            }
+        }
+
+        if (currentLever != null && leverUseHeld)
+        {
+            currentLever.Tick(Time.deltaTime);
         }
     }
 
@@ -180,20 +247,40 @@ public class PlayerController : MonoBehaviour
     {
         if (currentLever != null)
         {
-            currentLever.OnFocusExit();
+            currentLever.FocusExit();
             currentLever = null;
+        }
+    }
+
+    public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoSpill)
+    {
+        if (!canBeKnockedBack || controller == null) return;
+
+        Vector3 dir = transform.position - sourcePosition;
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            dir = -transform.forward;
+        }
+        dir.Normalize();
+
+        Vector3 horizontal = dir * force;
+        Vector3 vertical = Vector3.up * (force * knockbackUpFactor);
+
+        knockbackVelocity = horizontal + vertical;
+
+        isKnockedDown = true;
+        knockdownTimer = knockdownDuration;
+
+        if (carrier != null && causeCargoSpill && carrier.HasAnyMounted())
+        {
+            carrier.SpillAllOnCarrierDrop(transform.position, dir);
         }
     }
 
     public bool FindInteractCandidate(out WorldItem world)
     {
         world = null;
-
-        // While lever has focus, do not report world items
-        if (InteractionLock.LeverHasFocus)
-        {
-            return false;
-        }
 
         Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
         if (!cam) return false;
