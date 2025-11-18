@@ -1,3 +1,4 @@
+// Assets/Scripts/Player/PlayerController.cs
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -29,6 +30,16 @@ public class PlayerController : MonoBehaviour
     public float knockbackUpFactor = 0.5f;
     public float knockdownDuration = 0.6f;
 
+    [Header("Carrier Drop (Hold)")]
+    public float carrierDropBaseHold = 0.5f;   // 최소 홀드 시간
+    public float carrierDropPerWeight = 0.05f; // 짐 무게(kg)당 추가 시간
+    public float carrierDropMaxHold = 3f;      // 상한
+
+    [Header("Carrier Inspect")]
+    public float carrierInspectHoldTime = 0.6f;
+    public float carrierInspectMaxDistance = 4f;
+    public CarrierSlotUI carrierSlotUI;
+
     [Header("Debug")]
     public bool debugLever;
 
@@ -42,11 +53,23 @@ public class PlayerController : MonoBehaviour
     private UniversalLever currentLever;
     private bool leverUseHeld;
 
+    // 지게 드롭 홀드 상태
+    private bool carrierDropHolding;
+    private float carrierDropTimer;
+
+    // 지게 슬롯 인스펙트 상태
+    private bool carrierInspecting;
+    private float carrierInspectTimer;
+    private CarrierController carrierInspectTarget;
+
     void Awake()
     {
         controller = GetComponent<CharacterController>();
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+
+        if (!carrierSlotUI)
+            carrierSlotUI = FindFirstObjectByType<CarrierSlotUI>();
     }
 
     void Update()
@@ -55,6 +78,8 @@ public class PlayerController : MonoBehaviour
         UpdateLeverFocusAndTick();
         HandleHotbar();
         HandleActions();
+        HandleCarrierDropHold();
+        HandleCarrierInspect();
 
         if (carrier)
         {
@@ -83,12 +108,8 @@ public class PlayerController : MonoBehaviour
 
         controller.Move(horizontalVel * Time.deltaTime);
 
-        if (grounded && verticalVel < 0f)
-            verticalVel = -2f;
-
-        if (!blockInput && Input.GetKeyDown(KeyCode.Space) && grounded)
-            verticalVel = jumpForce;
-
+        if (grounded && verticalVel < 0f) verticalVel = -2f;
+        if (!blockInput && Input.GetKeyDown(KeyCode.Space) && grounded) verticalVel = jumpForce;
         verticalVel += gravity * Time.deltaTime;
 
         float totalY = verticalVel + knockbackVelocity.y;
@@ -130,40 +151,34 @@ public class PlayerController : MonoBehaviour
 
     void HandleActions()
     {
-        // Optional: block all interactions while knocked down
-        if (isKnockedDown)
-            return;
-
-        // E pressed
+        // ── E키: 레버 우선, 아니면 아이템 줍기 ──
         if (Input.GetKeyDown(KeyCode.E))
         {
             if (currentLever != null)
             {
                 leverUseHeld = true;
                 currentLever.OnUsePressed();
-                return;
             }
-
-            // 2) Otherwise, try to pick up a world item
-            Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
-            if (cam && Physics.Raycast(
-                    cam.transform.position,
-                    cam.transform.forward,
-                    out RaycastHit hit,
-                    interactDistance,
-                    interactMask,
-                    QueryTriggerInteraction.Collide))
+            else
             {
-                var worldItem = hit.collider.GetComponentInParent<WorldItem>();
-                if (worldItem && inventory != null)
+                Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+                if (cam && Physics.Raycast(
+                        cam.transform.position,
+                        cam.transform.forward,
+                        out RaycastHit hit,
+                        interactDistance,
+                        interactMask,
+                        QueryTriggerInteraction.Collide))
                 {
-                    Debug.Log("Try Pickup");
-                    inventory.TryPickupWorldItem(worldItem);
+                    var worldItem = hit.collider.GetComponentInParent<WorldItem>();
+                    if (worldItem && inventory != null)
+                    {
+                        inventory.TryPickupWorldItem(worldItem);
+                    }
                 }
             }
         }
 
-        // E released
         if (Input.GetKeyUp(KeyCode.E))
         {
             if (currentLever != null)
@@ -173,19 +188,188 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // Drop active item
+        // ── G키: 일반 아이템 드롭 or 지게 드롭 홀드 시작 ──
         if (Input.GetKeyDown(KeyCode.G))
         {
             if (!inventory) return;
-            Vector3 fwd = transform.forward;
-            Transform origin = dropOrigin ? dropOrigin : transform;
-            inventory.DropActiveItem(origin, fwd);
+
+            ItemDefinition activeDef = inventory.ActiveDef();
+            bool activeIsCarrier = (activeDef != null && activeDef.isCarrier && carrier != null);
+
+            if (activeIsCarrier)
+            {
+                // 지게 드롭은 홀드로
+                carrierDropHolding = true;
+                carrierDropTimer = 0f;
+            }
+            else
+            {
+                // 일반 아이템은 탭으로 바로 드롭
+                Vector3 fwd = transform.forward;
+                Transform origin = dropOrigin ? dropOrigin : transform;
+                inventory.DropActiveItem(origin, fwd);
+            }
         }
 
-        // LMB: active item use hook
+        // LMB: use active item (hook용)
         if (Input.GetMouseButtonDown(0))
         {
-            // implement active item use here if needed
+            // active item use hook
+        }
+    }
+
+    void HandleCarrierDropHold()
+    {
+        if (!carrierDropHolding)
+            return;
+
+        if (!Input.GetKey(KeyCode.G))
+        {
+            // 홀드 중 키를 떼면 취소
+            carrierDropHolding = false;
+            carrierDropTimer = 0f;
+            return;
+        }
+
+        if (carrier == null || inventory == null)
+        {
+            carrierDropHolding = false;
+            carrierDropTimer = 0f;
+            return;
+        }
+
+        ItemDefinition activeDef = inventory.ActiveDef();
+        if (activeDef == null || !activeDef.isCarrier)
+        {
+            carrierDropHolding = false;
+            carrierDropTimer = 0f;
+            return;
+        }
+
+        float required = carrierDropBaseHold;
+        if (carrier.totalWeight > 0f)
+        {
+            required += carrier.totalWeight * carrierDropPerWeight;
+            required = Mathf.Min(required, carrierDropMaxHold);
+        }
+
+        carrierDropTimer += Time.deltaTime;
+
+        if (carrierDropTimer >= required)
+        {
+            // 실제 지게 통째 드롭
+            Transform origin = dropOrigin ? dropOrigin : transform;
+            Vector3 pos = origin.position + transform.forward * 0.6f + Vector3.up * 0.3f;
+            Vector3 fwd = transform.forward;
+
+            bool removed = inventory.DropCarrierAsBundle(origin, fwd);
+            if (removed)
+            {
+                carrier.DropAsBundle(pos, fwd);
+
+                // 인벤토리/플레이어에서 지게 참조 제거
+                inventory.carrier = null;
+                carrier = null;
+            }
+
+            carrierDropHolding = false;
+            carrierDropTimer = 0f;
+        }
+    }
+
+    void HandleCarrierInspect()
+    {
+        if (carrierSlotUI == null) return;
+
+        bool eHeld = Input.GetKey(KeyCode.E);
+
+        if (!eHeld)
+        {
+            carrierInspectTimer = 0f;
+            carrierInspectTarget = null;
+            if (carrierInspecting)
+            {
+                carrierInspecting = false;
+                carrierSlotUI.Close();
+            }
+            return;
+        }
+
+        // 레버 포커스 중이면 지게 인스펙트 X
+        if (currentLever != null)
+        {
+            carrierInspectTimer = 0f;
+            carrierInspectTarget = null;
+            if (carrierInspecting)
+            {
+                carrierInspecting = false;
+                carrierSlotUI.Close();
+            }
+            return;
+        }
+
+        // 바로 앞에 월드 아이템이 있다면, 인스펙트보다 줍기가 우선
+        if (FindInteractCandidate(out var _))
+        {
+            carrierInspectTimer = 0f;
+            carrierInspectTarget = null;
+            if (carrierInspecting)
+            {
+                carrierInspecting = false;
+                carrierSlotUI.Close();
+            }
+            return;
+        }
+
+        Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+        if (!cam)
+        {
+            carrierInspectTimer = 0f;
+            carrierInspectTarget = null;
+            if (carrierInspecting)
+            {
+                carrierInspecting = false;
+                carrierSlotUI.Close();
+            }
+            return;
+        }
+
+        CarrierController target = null;
+        if (Physics.Raycast(
+                cam.transform.position,
+                cam.transform.forward,
+                out RaycastHit hit,
+                carrierInspectMaxDistance,
+                ~0,
+                QueryTriggerInteraction.Collide))
+        {
+            target = hit.collider.GetComponentInParent<CarrierController>();
+        }
+
+        if (target == null)
+        {
+            carrierInspectTimer = 0f;
+            carrierInspectTarget = null;
+            if (carrierInspecting)
+            {
+                carrierInspecting = false;
+                carrierSlotUI.Close();
+            }
+            return;
+        }
+
+        if (carrierInspectTarget != target)
+        {
+            carrierInspectTarget = target;
+            carrierInspectTimer = 0f;
+        }
+
+        carrierInspectTimer += Time.deltaTime;
+
+        if (!carrierInspecting && carrierInspectTimer >= carrierInspectHoldTime)
+        {
+            carrierInspecting = true;
+            carrierSlotUI.Open(target, transform);
         }
     }
 
@@ -233,16 +417,13 @@ public class PlayerController : MonoBehaviour
 
         if (hitLever != currentLever)
         {
-            // exit old lever focus
             if (currentLever != null)
             {
                 currentLever.FocusExit();
             }
 
             currentLever = hitLever;
-            leverUseHeld = false;
 
-            // enter new lever focus
             if (currentLever != null)
             {
                 currentLever.FocusEnter();
@@ -262,7 +443,6 @@ public class PlayerController : MonoBehaviour
             currentLever.FocusExit();
             currentLever = null;
         }
-        leverUseHeld = false;
     }
 
     public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoSpill)

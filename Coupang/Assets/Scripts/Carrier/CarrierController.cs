@@ -1,5 +1,7 @@
+// Assets/Scripts/Player/CarrierController.cs
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 // Unity 6+ rename compatibility (PhysicMaterial -> PhysicsMaterial)
@@ -15,7 +17,7 @@ public class CarrierController : MonoBehaviour
     // ───────────── References ─────────────
     [Header("References")]
     public Transform carrierCargoRoot;   // visual stack parent (static on back)
-    public Transform stackPivot;         // parent for all loaded visuals (lean target)
+    public Transform stackPivot;         // parent for all loaded items / slot pivots (lean target)
     public Transform wobbleReference;    // usually player root (for velocity sampling)
 
     // ───────────── Visual sway (auto recovers when stopping) ─────────────
@@ -93,12 +95,19 @@ public class CarrierController : MonoBehaviour
     public PhysicsMaterial cargoFrictionMaterial;
     public bool configureCargoRigidbodies = true;
 
+    // ───────────── State ─────────────
+    [Header("State")]
+    public bool isDroppedWorldCarrier = false;  // true면 플레이어가 메고 있는 게 아니라 바닥에 떨어진 상태
+
     // ───────────── Data ─────────────
     [Header("Derived (read-only)")]
     public float totalWeight;
     public float stackTotalHeight;
 
+    // 지게에 올라간 실제 WorldItem 리스트
     private readonly List<WorldItem> mounted = new List<WorldItem>();
+
+    public IReadOnlyList<WorldItem> MountedItems => mounted;
 
     // ───────────── Unity ─────────────
     void Awake()
@@ -133,7 +142,7 @@ public class CarrierController : MonoBehaviour
     /// </summary>
     public void ReportGroundedState(bool grounded, Vector3 worldPos, Vector3 controllerVelocity)
     {
-        if (!enableImpactSpill)
+        if (!enableImpactSpill || isDroppedWorldCarrier)
         {
             _lastGrounded = grounded;
             return;
@@ -157,7 +166,6 @@ public class CarrierController : MonoBehaviour
                         ? stackPivot.position
                         : transform.position + Vector3.up * 1.0f;
 
-                    // 착지 충격으로 스필 → 현재 이동 방향 기준
                     Vector3 horizVel = new Vector3(sampledVelocity.x, 0f, sampledVelocity.z);
                     Vector3 dir = horizVel.sqrMagnitude > 0.01f
                         ? horizVel.normalized
@@ -177,7 +185,7 @@ public class CarrierController : MonoBehaviour
     /// </summary>
     public void NotifyExternalKnock(float speedMagnitude)
     {
-        if (!enableImpactSpill) return;
+        if (!enableImpactSpill || isDroppedWorldCarrier) return;
 
         if (speedMagnitude >= knockSpeedTrigger &&
             Time.time >= _lastSpillTime + minTimeBetweenAutoSpills)
@@ -186,7 +194,6 @@ public class CarrierController : MonoBehaviour
                 ? stackPivot.position
                 : transform.position + Vector3.up * 1.0f;
 
-            // 넉백일 때는 플레이어 수평 속도 방향으로 튀어나가게
             Vector3 horizVel = new Vector3(sampledVelocity.x, 0f, sampledVelocity.z);
             Vector3 dir = horizVel.sqrMagnitude > 0.01f
                 ? horizVel.normalized
@@ -197,65 +204,104 @@ public class CarrierController : MonoBehaviour
     }
 
     /// <summary>
-    /// Try to mount a world item onto the carrier (always allowed if called by Inventory when inventory has no space).
+    /// Try to mount a world item onto the carrier.
+    /// 실제 WorldItem을 지게 위로 옮기고, Carrier mount 모드로 전환.
     /// </summary>
     public bool TryMount(WorldItem world)
     {
         if (!world || !world.definition) return false;
         if (world.definition.isCarrier) return false;
 
-        world.OnPickedUp(false);
         EnsureStackPivot();
 
         float currentY = 0f;
         for (int i = 0; i < mounted.Count; i++)
-            currentY += Mathf.Max(0.01f, mounted[i].definition.stackSize.y);
+        {
+            var w = mounted[i];
+            if (w && w.definition)
+                currentY += Mathf.Max(0.01f, w.definition.stackSize.y);
+        }
 
         var def = world.definition;
         Vector3 sz = def.stackSize;
         float h = Mathf.Max(0.01f, sz.y);
         float centerY = currentY + h * 0.5f;
 
-        GameObject go;
-        if (def.stackVisualPrefab)
-        {
-            go = Instantiate(def.stackVisualPrefab, stackPivot);
-            go.transform.localPosition = new Vector3(0f, centerY, -0.1f);
-            go.transform.localRotation = Quaternion.identity;
+        int slotIndex = mounted.Count;
+        GameObject slotGO = new GameObject($"CarrierSlot_{slotIndex}");
+        Transform slotPivot = slotGO.transform;
+        slotPivot.SetParent(stackPivot, false);
+        slotPivot.localPosition = new Vector3(0f, centerY, -0.1f);
+        slotPivot.localRotation = Quaternion.identity;
+        slotPivot.localScale = Vector3.one;
 
-            foreach (var c in go.GetComponentsInChildren<Collider>(true)) Destroy(c);
-            foreach (var r in go.GetComponentsInChildren<Rigidbody>(true)) Destroy(r);
-        }
-        else
-        {
-            go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = $"CargoProxy_{def.displayName}";
-            go.transform.SetParent(stackPivot, false);
-            go.transform.localPosition = new Vector3(0f, centerY, -0.1f);
-            go.transform.localRotation = Quaternion.identity;
-            go.transform.localScale = new Vector3(
-                Mathf.Max(0.01f, sz.x),
-                h,
-                Mathf.Max(0.01f, sz.z)
-            );
-
-            var col = go.GetComponent<Collider>();
-            if (col) Destroy(col);
-
-            var rend = go.GetComponent<Renderer>();
-            if (rend && rend.material)
-            {
-                rend.material.color = def.stackColor;
-            }
-        }
+        // 실제 월드 아이템을 지게 슬롯에 장착
+        world.EnterCarrierMountMode(this, slotIndex, slotPivot);
 
         mounted.Add(world);
-        _lastChildCount = -1;
+        _lastChildCount = -1; // bend chain 재빌드
         return true;
     }
 
     /// <summary>
+    /// 인벤토리에서 '지게 아이템'을 떨어뜨릴 때, 짐까지 통째로 한 덩어리로 드롭.
+    /// </summary>
+    // CarrierController.cs 안에 있는 기존 DropAsBundle() 를 이걸로 교체
+
+    public void DropAsBundle(Vector3 worldPos, Vector3 forward)
+    {
+        if (mounted.Count == 0)
+            return;
+
+        // 앞으로 밀 방향 (플레이어 바라보는 방향)
+        Vector3 flatF = new Vector3(forward.x, 0f, forward.z);
+        if (flatF.sqrMagnitude < 0.0001f)
+            flatF = transform.forward;
+        flatF.y = 0f;
+        flatF = flatF.sqrMagnitude > 0.0001f ? flatF.normalized : Vector3.forward;
+
+        // 안전하게 복사본 사용
+        var list = new List<WorldItem>(mounted);
+
+        foreach (var wi in list)
+        {
+            if (!wi) continue;
+
+            // 현재 캐리어 위에서의 월드 위치
+            Vector3 pos = wi.transform.position;
+
+            // 약간 플레이어 앞/아래로 밀어서 겹침 방지
+            pos += flatF * 0.2f + Vector3.down * 0.05f;
+
+            // 살짝 앞으로 튀어나가는 정도의 속도
+            Vector3 v = flatF * Mathf.Max(0f, cargoForwardSpeed);
+
+            // 캐리어 장착 상태 해제 + 물리 복구
+            wi.OnDropped(pos, v);
+        }
+
+        mounted.Clear();
+
+        // stackPivot 아래에 있던 슬롯 피벗들 정리해서
+        // 플레이어 등에서 짐 외형 사라지도록
+        Transform t = stackPivot ? stackPivot : carrierCargoRoot;
+        if (t)
+        {
+            for (int i = t.childCount - 1; i >= 0; i--)
+            {
+                Destroy(t.GetChild(i).gameObject);
+            }
+        }
+
+        _bendAngles.Clear();
+        _bendVels.Clear();
+        _lastChildCount = -1;
+    }
+
+
+    /// <summary>
     /// Called by InventorySystem when player drops the carrier item. All mounted cargo spill too.
+    /// (통짜 드롭이 아닌 기존 스필용으로 유지)
     /// </summary>
     public void SpillAllOnCarrierDrop(Vector3 origin, Vector3 forward)
     {
@@ -288,6 +334,32 @@ public class CarrierController : MonoBehaviour
 
     public bool HasAnyMounted() => mounted.Count > 0;
 
+    /// <summary>
+    /// 슬롯 인덱스/아이템 이름을 문자열로 만들어 UI에 뿌릴 때 사용.
+    /// </summary>
+    public string GetSlotDebugString()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Carrier Slots:");
+
+        if (mounted.Count == 0)
+        {
+            sb.AppendLine("(empty)");
+            return sb.ToString();
+        }
+
+        for (int i = 0; i < mounted.Count; i++)
+        {
+            var wi = mounted[i];
+            if (!wi || wi.definition == null) continue;
+
+            int slotIdx = wi.carrierSlotIndex >= 0 ? wi.carrierSlotIndex : i;
+            sb.Append('[').Append(slotIdx).Append("] ").AppendLine(wi.definition.displayName);
+        }
+
+        return sb.ToString();
+    }
+
     // ───────────── Internals ─────────────
 
     private void UpdateTelemetry(float dt)
@@ -308,7 +380,7 @@ public class CarrierController : MonoBehaviour
 
         _lastPos = p;
 
-        if (!enableImpactSpill) return;
+        if (!enableImpactSpill || isDroppedWorldCarrier) return;
 
         float now = Time.time;
         bool canSpill = now >= _lastSpillTime + minTimeBetweenAutoSpills;
@@ -484,110 +556,81 @@ public class CarrierController : MonoBehaviour
     }
 
     /// <summary>
-    /// 실제로 짐을 월드에 생성하고, 플레이어 속도 방향으로 튀어나가게 하는 부분.
+    /// 실제로 짐을 월드에 떨어뜨리고, 플레이어 속도 방향으로 튀어나가게 하는 부분.
+    /// WorldItem 인스턴스를 재사용한다 (Instantiate/Destroy 안 함).
     /// </summary>
     private void ApplyRealisticDrop(WorldItem wi, Vector3 pos, Vector3 forwardDir)
     {
         if (wi == null) return;
 
-        ItemDefinition def = wi.definition;
+        Vector3 horizVel = new Vector3(sampledVelocity.x, 0f, sampledVelocity.z);
+        float horizSpeed = horizVel.magnitude;
 
-        // 1) 내구도 스냅샷
-        int curDur = 0;
-        int maxDur = 0;
-        bool hasDur = wi.TryGetDurability(out curDur, out maxDur);
+        Vector3 mainDir;
+        float mainSpeed;
 
-        // 2) 드롭 프리팹 결정
-        GameObject prefab = (def != null && def.worldPrefab != null)
-            ? def.worldPrefab
-            : wi.gameObject;
-
-        // 3) 새로운 인스턴스 생성
-        GameObject inst = Instantiate(prefab, pos, Quaternion.identity);
-        WorldItem newWI = inst.GetComponent<WorldItem>();
-
-        if (newWI != null)
+        if (horizSpeed > 0.1f)
         {
-            // 내구도 복원
-            if (hasDur && maxDur > 0)
+            mainDir = horizVel.normalized;
+            mainSpeed = horizSpeed * Mathf.Max(0f, inheritVelocityFactor);
+        }
+        else
+        {
+            Vector3 fwd = forwardDir.sqrMagnitude > 0.0001f
+                ? forwardDir.normalized
+                : transform.forward;
+
+            mainDir = fwd;
+            mainSpeed = Mathf.Max(0f, cargoForwardSpeed);
+        }
+
+        Vector3 side = Vector3.zero;
+        if (cargoSideSpeedRange.y > 0f)
+        {
+            Vector3 sideBase = Vector3.Cross(mainDir, Vector3.up);
+            if (sideBase.sqrMagnitude > 0.0001f)
             {
-                newWI.ApplyDurability(curDur, maxDur, true);
-            }
+                sideBase.Normalize();
+                if (UnityEngine.Random.value < 0.5f)
+                    sideBase = -sideBase;
 
-            if (!newWI.rb) newWI.rb = newWI.GetComponent<Rigidbody>();
-            var rb = newWI.rb;
-            if (rb != null)
-            {
-                if (configureCargoRigidbodies)
-                {
-                    rb.interpolation = RigidbodyInterpolation.Interpolate;
-                    rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-                    rb.angularDamping = Mathf.Max(0.2f, rb.angularDamping);
-                }
-
-                if (cargoFrictionMaterial)
-                {
-                    var cols = newWI.GetComponentsInChildren<Collider>(true);
-                    for (int c = 0; c < cols.Length; c++)
-                        cols[c].sharedMaterial = cargoFrictionMaterial;
-                }
-
-                // ── 여기서 "플레이어가 날아가는 방향"으로 속도 설정 ──
-                Vector3 horizVel = new Vector3(sampledVelocity.x, 0f, sampledVelocity.z);
-                float horizSpeed = horizVel.magnitude;
-
-                Vector3 mainDir;
-                float mainSpeed;
-
-                if (horizSpeed > 0.1f)
-                {
-                    // 플레이어 실제 이동 방향 + 속도 상속
-                    mainDir = horizVel.normalized;
-                    mainSpeed = horizSpeed * Mathf.Max(0f, inheritVelocityFactor);
-                }
-                else
-                {
-                    // 거의 안 움직이는 경우에는 forwardDir 기준으로 약하게 튀어나감
-                    Vector3 fwd = forwardDir.sqrMagnitude > 0.0001f
-                        ? forwardDir.normalized
-                        : transform.forward;
-
-                    mainDir = fwd;
-                    mainSpeed = Mathf.Max(0f, cargoForwardSpeed);
-                }
-
-                // 약간의 좌우 랜덤 튕김
-                Vector3 side = Vector3.zero;
-                if (cargoSideSpeedRange.y > 0f)
-                {
-                    Vector3 sideBase = Vector3.Cross(mainDir, Vector3.up);
-                    if (sideBase.sqrMagnitude > 0.0001f)
-                    {
-                        sideBase.Normalize();
-                        if (UnityEngine.Random.value < 0.5f)
-                            sideBase = -sideBase;
-
-                        float sideSpeed = UnityEngine.Random.Range(cargoSideSpeedRange.x, cargoSideSpeedRange.y);
-                        side = sideBase * sideSpeed;
-                    }
-                }
-
-                Vector3 v =
-                    mainDir * mainSpeed +
-                    side +
-                    Vector3.up * cargoUpBias;
-
-#if UNITY_6000_0_OR_NEWER
-                rb.linearVelocity = v;
-#else
-                rb.velocity = v;
-#endif
-
-                rb.angularVelocity = UnityEngine.Random.onUnitSphere * cargoAngularVel;
+                float sideSpeed = UnityEngine.Random.Range(cargoSideSpeedRange.x, cargoSideSpeedRange.y);
+                side = sideBase * sideSpeed;
             }
         }
 
-        // 4) 캐리어 안에 숨겨져 있던 원본 제거
-        Destroy(wi.gameObject);
+        Vector3 v =
+            mainDir * mainSpeed +
+            side +
+            Vector3.up * cargoUpBias;
+
+        // WorldItem을 Carrier mount 상태에서 월드로 되돌림
+        wi.OnDropped(pos, v);
+
+        if (!wi.rb) wi.rb = wi.GetComponent<Rigidbody>();
+        var rb = wi.rb;
+        if (rb != null)
+        {
+            if (configureCargoRigidbodies)
+            {
+                rb.interpolation = RigidbodyInterpolation.Interpolate;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                rb.angularDamping = Mathf.Max(0.2f, rb.angularDamping);
+            }
+
+            if (cargoFrictionMaterial)
+            {
+                var cols = wi.GetComponentsInChildren<Collider>(true);
+                for (int c = 0; c < cols.Length; c++)
+                    cols[c].sharedMaterial = cargoFrictionMaterial;
+            }
+
+#if UNITY_6000_0_OR_NEWER
+            rb.linearVelocity = v;
+#else
+            rb.velocity = v;
+#endif
+            rb.angularVelocity = UnityEngine.Random.onUnitSphere * cargoAngularVel;
+        }
     }
 }

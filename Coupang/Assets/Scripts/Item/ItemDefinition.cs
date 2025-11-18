@@ -1,5 +1,6 @@
 // Assets/Scripts/Item/ItemDefinition.cs
 using UnityEngine;
+
 public enum ItemType
 {
     Tool,
@@ -49,16 +50,28 @@ public class ItemDefinition : ScriptableObject
     [Tooltip("Box proxy used WHEN LOADED ON THE CARRIER (meters). Y is stack height increment.")]
     public Vector3 stackSize = new Vector3(0.40f, 0.40f, 0.30f);
 
-    [Tooltip("Optional prefab to visualize this item on the carrier instead of a primitive cube.")]
+    [Tooltip("Optional prefab to visualize this item on the carrier instead of a primitive cube. (지금 구조에서는 사용 안 하지만 남겨 둠)")]
     public GameObject stackVisualPrefab;
 
     [Tooltip("Fallback color for the primitive cube when no stack prefab is provided.")]
     public Color stackColor = new Color(0.7f, 0.7f, 0.7f, 1f);
 
+    // ── Carrier Mount (optional) ───────────────────────────────────────────────
+    [Header("Carrier Mount (optional)")]
+    [Tooltip("CarrierSlot 피벗 기준 로컬 위치. (0,0,0)이면 슬롯 중심에 둠.")]
+    public Vector3 carrierLocalPosition = Vector3.zero;
+
+    [Tooltip("CarrierSlot 피벗 기준 로컬 회전(Euler).")]
+    public Vector3 carrierLocalEuler = Vector3.zero;
+
+    [Tooltip("CarrierSlot 피벗 기준 로컬 스케일. (0,0,0)이면 (1,1,1)로 처리.")]
+    public Vector3 carrierLocalScale = Vector3.one;
+
     // ── World Prefab ───────────────────────────────────────────────────────────
     [Header("World Prefab")]
     [Tooltip("Prefab used when the item exists in the world or is dropped.")]
     public GameObject worldPrefab;
+
     // ── Breakability ───────────────────────────────────────────────────────────
     [Header("Breakability")]
     public bool breakable = false;
