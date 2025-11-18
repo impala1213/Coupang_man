@@ -1123,11 +1123,13 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8186424562861070311}
-  - component: {fileID: 2031955981970050554}
   - component: {fileID: 4156152898143651127}
+  - component: {fileID: 2031955981970050554}
   - component: {fileID: 7854558863087492652}
   - component: {fileID: 6933663667257268947}
   - component: {fileID: 7850213968441404175}
+  - component: {fileID: 960669841660578157}
+  - component: {fileID: 774389386636692668}
   m_Layer: 0
   m_Name: player
   m_TagString: Player
@@ -1154,30 +1156,6 @@ Transform:
   - {fileID: 8433350317762188388}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &2031955981970050554
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4085519168744559420}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 419d7ec30fcf9e342b4d72171bc2190d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  walkSpeed: 4
-  sprintSpeed: 7
-  jumpForce: 5
-  gravity: -19.62
-  interactDistance: 3
-  interactMask:
-    serializedVersion: 2
-    m_Bits: 576
-  cameraSwitcher: {fileID: 7854558863087492652}
-  inventory: {fileID: 6933663667257268947}
-  carrier: {fileID: 7850213968441404175}
-  dropOrigin: {fileID: 0}
 --- !u!143 &4156152898143651127
 CharacterController:
   m_ObjectHideFlags: 0
@@ -1203,6 +1181,39 @@ CharacterController:
   m_SkinWidth: 0.05
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0.9, z: 0}
+--- !u!114 &2031955981970050554
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4085519168744559420}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 419d7ec30fcf9e342b4d72171bc2190d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  walkSpeed: 4
+  sprintSpeed: 7
+  jumpForce: 5
+  gravity: -19.62
+  interactDistance: 3
+  interactMask:
+    serializedVersion: 2
+    m_Bits: 576
+  leverInteractDistance: 3
+  leverMask:
+    serializedVersion: 2
+    m_Bits: 0
+  cameraSwitcher: {fileID: 7854558863087492652}
+  inventory: {fileID: 6933663667257268947}
+  carrier: {fileID: 7850213968441404175}
+  dropOrigin: {fileID: 0}
+  canBeKnockedBack: 1
+  knockbackDamping: 5
+  knockbackUpFactor: 0.5
+  knockdownDuration: 0.6
+  debugLever: 0
 --- !u!114 &7854558863087492652
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1276,6 +1287,35 @@ MonoBehaviour:
   configureCargoRigidbodies: 1
   totalWeight: 0
   stackTotalHeight: 0
+--- !u!114 &960669841660578157
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4085519168744559420}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 70ee78c74e700c3428a8bc303485e2b5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxHealth: 100
+  currentHealth: 0
+--- !u!114 &774389386636692668
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4085519168744559420}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 52868390cd5157248a97ca6d5ad0e0b3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  inventory: {fileID: 6933663667257268947}
+  carrier: {fileID: 7850213968441404175}
+  dropOrigin: {fileID: 8186424562861070311}
 --- !u!1 &4240230581218325773
 GameObject:
   m_ObjectHideFlags: 0

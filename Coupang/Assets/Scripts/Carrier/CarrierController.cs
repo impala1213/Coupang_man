@@ -1,4 +1,3 @@
-// Assets/Scripts/Player/CarrierController.cs
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -31,7 +30,7 @@ public class CarrierController : MonoBehaviour
     public float swayXOffsetPerDeg = 0.0008f;
 
     private float _swayDeg;          // current visual sway angle (deg, + = right)
-    private float _swayVel;          // not used for dynamics, reserved
+    private float _swayVel;          // reserved
 
     // ───────────── Elastic bend (bottom→top inertia) ─────────────
     [Header("Elastic Bend (bottom→top)")]
@@ -48,24 +47,42 @@ public class CarrierController : MonoBehaviour
     private int _lastChildCount = -1;
     private static readonly List<Transform> _tmpChildren = new List<Transform>();
 
-    // ───────────── Spill triggers (impacts/knock) ─────────────
+    // ───────────── Spill triggers (impacts/knock/velocity spike) ─────────────
     [Header("Spill Triggers")]
     [Tooltip("If true, falling from height or impact can spill all cargo.")]
     public bool enableImpactSpill = true;
+
     [Tooltip("Vertical drop height (m) to trigger spill on landing.")]
     public float fallHeightTrigger = 3.0f;
+
     [Tooltip("Downward impact speed (m/s) to trigger spill on landing.")]
     public float impactSpeedTrigger = 8.0f;
-    [Tooltip("Sudden horizontal speed (m/s) considered a knock.")]
+
+    [Tooltip("Sudden horizontal speed (m/s) considered a knock (absolute speed).")]
     public float knockSpeedTrigger = 10.0f;
+
+    [Tooltip("Change of horizontal speed (m/s) between frames considered a sudden move.")]
+    public float horizontalSpeedDeltaTrigger = 12.0f;
+
+    [Tooltip("Minimum seconds between automatic spills (impact/knock/velocity spike).")]
+    public float minTimeBetweenAutoSpills = 0.4f;
+
+    [Header("Velocity Inherit")]
+    [Tooltip("How much of the player's horizontal velocity is inherited by spilled cargo.")]
+    public float inheritVelocityFactor = 0.8f;
 
     // grounded state is reported by PlayerController
     private bool _lastGrounded = true;
     private bool _airborne = false;
     private float _fallStartY;
-    private Vector3 _lastPos, _lastVel;   // sampled from wobbleReference
+    private Vector3 _lastPos;
+    private Vector3 _lastVel;
+
     public Vector3 sampledVelocity { get; private set; }
     public Vector3 sampledAcceleration { get; private set; }
+
+    private float _lastSpillTime;
+    private Vector3 _lastHorizVel;
 
     // ───────────── Spill physics (realistic) ─────────────
     [Header("Spill Physics")]
@@ -88,15 +105,18 @@ public class CarrierController : MonoBehaviour
     {
         EnsureStackPivot();
         _lastPos = wobbleReference ? wobbleReference.position : transform.position;
+        _lastHorizVel = Vector3.zero;
+        _lastSpillTime = -999f;
     }
 
     void Update()
     {
-        UpdateTelemetry(Time.deltaTime);
+        float dt = Time.deltaTime;
+        UpdateTelemetry(dt);
         UpdateDerived();
 
-        UpdateSway(Time.deltaTime);
-        UpdateElasticBend(Time.deltaTime);
+        UpdateSway(dt);
+        UpdateElasticBend(dt);
     }
 
 #if UNITY_EDITOR
@@ -113,25 +133,37 @@ public class CarrierController : MonoBehaviour
     /// </summary>
     public void ReportGroundedState(bool grounded, Vector3 worldPos, Vector3 controllerVelocity)
     {
-        if (!enableImpactSpill) { _lastGrounded = grounded; return; }
+        if (!enableImpactSpill)
+        {
+            _lastGrounded = grounded;
+            return;
+        }
 
         if (!grounded && _lastGrounded)
         {
-            // take-off
             _airborne = true;
             _fallStartY = worldPos.y;
         }
         else if (grounded && !_lastGrounded)
         {
-            // landing
             if (_airborne)
             {
-                float fallHeight = _fallStartY - worldPos.y; // meters
-                float downSpeed = Mathf.Max(0f, -controllerVelocity.y); // m/s
+                float fallHeight = _fallStartY - worldPos.y;
+                float downSpeed = Mathf.Max(0f, -controllerVelocity.y);
+
                 if (fallHeight >= fallHeightTrigger || downSpeed >= impactSpeedTrigger)
                 {
-                    Vector3 origin = stackPivot ? stackPivot.position : transform.position + Vector3.up * 1.0f;
-                    SpillAllAt(origin, transform.forward);
+                    Vector3 origin = stackPivot
+                        ? stackPivot.position
+                        : transform.position + Vector3.up * 1.0f;
+
+                    // 착지 충격으로 스필 → 현재 이동 방향 기준
+                    Vector3 horizVel = new Vector3(sampledVelocity.x, 0f, sampledVelocity.z);
+                    Vector3 dir = horizVel.sqrMagnitude > 0.01f
+                        ? horizVel.normalized
+                        : transform.forward;
+
+                    SpillAllAt(origin, dir);
                 }
             }
             _airborne = false;
@@ -146,10 +178,21 @@ public class CarrierController : MonoBehaviour
     public void NotifyExternalKnock(float speedMagnitude)
     {
         if (!enableImpactSpill) return;
-        if (speedMagnitude >= knockSpeedTrigger)
+
+        if (speedMagnitude >= knockSpeedTrigger &&
+            Time.time >= _lastSpillTime + minTimeBetweenAutoSpills)
         {
-            Vector3 origin = stackPivot ? stackPivot.position : transform.position + Vector3.up * 1.0f;
-            SpillAllAt(origin, transform.forward);
+            Vector3 origin = stackPivot
+                ? stackPivot.position
+                : transform.position + Vector3.up * 1.0f;
+
+            // 넉백일 때는 플레이어 수평 속도 방향으로 튀어나가게
+            Vector3 horizVel = new Vector3(sampledVelocity.x, 0f, sampledVelocity.z);
+            Vector3 dir = horizVel.sqrMagnitude > 0.01f
+                ? horizVel.normalized
+                : transform.forward;
+
+            SpillAllAt(origin, dir);
         }
     }
 
@@ -173,13 +216,13 @@ public class CarrierController : MonoBehaviour
         float h = Mathf.Max(0.01f, sz.y);
         float centerY = currentY + h * 0.5f;
 
-        // spawn visual under stackPivot
         GameObject go;
         if (def.stackVisualPrefab)
         {
             go = Instantiate(def.stackVisualPrefab, stackPivot);
             go.transform.localPosition = new Vector3(0f, centerY, -0.1f);
             go.transform.localRotation = Quaternion.identity;
+
             foreach (var c in go.GetComponentsInChildren<Collider>(true)) Destroy(c);
             foreach (var r in go.GetComponentsInChildren<Rigidbody>(true)) Destroy(r);
         }
@@ -190,13 +233,24 @@ public class CarrierController : MonoBehaviour
             go.transform.SetParent(stackPivot, false);
             go.transform.localPosition = new Vector3(0f, centerY, -0.1f);
             go.transform.localRotation = Quaternion.identity;
-            go.transform.localScale = new Vector3(Mathf.Max(0.01f, sz.x), h, Mathf.Max(0.01f, sz.z));
-            var col = go.GetComponent<Collider>(); if (col) Destroy(col);
-            var rend = go.GetComponent<Renderer>(); if (rend && rend.material) rend.material.color = def.stackColor;
+            go.transform.localScale = new Vector3(
+                Mathf.Max(0.01f, sz.x),
+                h,
+                Mathf.Max(0.01f, sz.z)
+            );
+
+            var col = go.GetComponent<Collider>();
+            if (col) Destroy(col);
+
+            var rend = go.GetComponent<Renderer>();
+            if (rend && rend.material)
+            {
+                rend.material.color = def.stackColor;
+            }
         }
 
         mounted.Add(world);
-        _lastChildCount = -1; // rebuild bend chain
+        _lastChildCount = -1;
         return true;
     }
 
@@ -210,8 +264,9 @@ public class CarrierController : MonoBehaviour
 
     /// <summary>
     /// Spill all current mounted cargo to world.
+    /// forwardDir는 fallback 방향(velocity가 없는 경우용).
     /// </summary>
-    public void SpillAllAt(Vector3 origin, Vector3 forward)
+    public void SpillAllAt(Vector3 origin, Vector3 forwardDir)
     {
         for (int i = 0; i < mounted.Count; i++)
         {
@@ -219,12 +274,16 @@ public class CarrierController : MonoBehaviour
             if (!wi) continue;
 
             Vector3 pos = origin + Vector3.up * 0.1f + UnityEngine.Random.insideUnitSphere * 0.05f;
-            ApplyRealisticDrop(wi, pos, forward);
+            ApplyRealisticDrop(wi, pos, forwardDir);
         }
 
         mounted.Clear();
         ClearVisuals();
-        _bendAngles.Clear(); _bendVels.Clear(); _lastChildCount = -1;
+        _bendAngles.Clear();
+        _bendVels.Clear();
+        _lastChildCount = -1;
+
+        _lastSpillTime = Time.time;
     }
 
     public bool HasAnyMounted() => mounted.Count > 0;
@@ -246,28 +305,66 @@ public class CarrierController : MonoBehaviour
 
             _lastVel = v;
         }
+
         _lastPos = p;
 
-        // auto knock detect (optional)
-        if (enableImpactSpill)
+        if (!enableImpactSpill) return;
+
+        float now = Time.time;
+        bool canSpill = now >= _lastSpillTime + minTimeBetweenAutoSpills;
+
+        Vector3 curHorizVel = new Vector3(sampledVelocity.x, 0f, sampledVelocity.z);
+        float horizSpeed = curHorizVel.magnitude;
+
+        Vector3 prevHorizVel = _lastHorizVel;
+        float horizDelta = (curHorizVel - prevHorizVel).magnitude;
+
+        // 1) sudden horizontal speed spike (velocity jump)
+        if (canSpill &&
+            !_airborne &&
+            horizDelta >= horizontalSpeedDeltaTrigger)
         {
-            float horiz = new Vector2(sampledVelocity.x, sampledVelocity.z).magnitude;
-            if (!_airborne && horiz >= knockSpeedTrigger * 1.15f) // small bias
-            {
-                Vector3 origin = stackPivot ? stackPivot.position : transform.position + Vector3.up * 1.0f;
-                SpillAllAt(origin, transform.forward);
-            }
+            Vector3 origin = stackPivot
+                ? stackPivot.position
+                : transform.position + Vector3.up * 1.0f;
+
+            Vector3 dir = curHorizVel.sqrMagnitude > 0.01f
+                ? curHorizVel.normalized
+                : transform.forward;
+
+            SpillAllAt(origin, dir);
+            canSpill = false;
         }
+
+        // 2) high absolute horizontal speed (legacy knockSpeedTrigger)
+        if (canSpill &&
+            !_airborne &&
+            horizSpeed >= knockSpeedTrigger * 1.15f)
+        {
+            Vector3 origin = stackPivot
+                ? stackPivot.position
+                : transform.position + Vector3.up * 1.0f;
+
+            Vector3 dir = curHorizVel.sqrMagnitude > 0.01f
+                ? curHorizVel.normalized
+                : transform.forward;
+
+            SpillAllAt(origin, dir);
+        }
+
+        _lastHorizVel = curHorizVel;
     }
 
     private void UpdateDerived()
     {
         totalWeight = 0f;
         stackTotalHeight = 0f;
+
         for (int i = 0; i < mounted.Count; i++)
         {
             var w = mounted[i];
             if (!w || !w.definition) continue;
+
             totalWeight += Mathf.Max(0.01f, w.definition.weight);
             stackTotalHeight += Mathf.Max(0.01f, w.definition.stackSize.y);
         }
@@ -277,19 +374,15 @@ public class CarrierController : MonoBehaviour
     {
         if (!stackPivot) return;
 
-        // visual sway from lateral acceleration
         float accX = transform.InverseTransformVector(sampledAcceleration).x;
         float target = accX * swayAccToDeg;
 
-        // when almost stopping, recover to zero
         Vector2 horizV = new Vector2(sampledVelocity.x, sampledVelocity.z);
         if (horizV.magnitude < 0.2f) target = 0f;
 
-        // smooth toward target
         _swayDeg = Mathf.MoveTowards(_swayDeg, target, swayRecoverSpeed * dt);
         _swayDeg = Mathf.Clamp(_swayDeg, -swayMaxDeg, swayMaxDeg);
 
-        // apply to base pivot (Z-rotation) + slight x offset
         stackPivot.localRotation = Quaternion.Euler(0f, 0f, -_swayDeg);
         Vector3 lp = stackPivot.localPosition;
         lp.x = _swayDeg * swayXOffsetPerDeg;
@@ -301,7 +394,13 @@ public class CarrierController : MonoBehaviour
         if (!useElasticBend || !stackPivot) return;
 
         int n = stackPivot.childCount;
-        if (n <= 0) { _bendAngles.Clear(); _bendVels.Clear(); _lastChildCount = 0; return; }
+        if (n <= 0)
+        {
+            _bendAngles.Clear();
+            _bendVels.Clear();
+            _lastChildCount = 0;
+            return;
+        }
 
         if (n != _lastChildCount || _bendAngles.Count != n)
         {
@@ -310,7 +409,9 @@ public class CarrierController : MonoBehaviour
         }
 
         _tmpChildren.Clear();
-        for (int i = 0; i < n; i++) _tmpChildren.Add(stackPivot.GetChild(i));
+        for (int i = 0; i < n; i++)
+            _tmpChildren.Add(stackPivot.GetChild(i));
+
         _tmpChildren.Sort((a, b) => a.localPosition.y.CompareTo(b.localPosition.y)); // bottom→top
 
         float accX = transform.InverseTransformVector(sampledAcceleration).x;
@@ -331,13 +432,14 @@ public class CarrierController : MonoBehaviour
             _bendAngles[i] = angle;
             _bendVels[i] = vel;
 
-            // visual amplify up the stack
             float amp = Mathf.Pow(Mathf.Max(1f, bendUpAmplify), i);
             float visDeg = Mathf.Clamp(angle * amp, -bendMaxDegPerLayer * 2f, bendMaxDegPerLayer * 2f);
 
             var t = _tmpChildren[i];
             var e = t.localEulerAngles;
-            e.x = 0f; e.y = 0f; e.z = -visDeg;
+            e.x = 0f;
+            e.y = 0f;
+            e.z = -visDeg;
             t.localEulerAngles = e;
 
             Vector3 lp = t.localPosition;
@@ -348,7 +450,9 @@ public class CarrierController : MonoBehaviour
 
     private void EnsureBendState(int count)
     {
-        _bendAngles.Clear(); _bendVels.Clear();
+        _bendAngles.Clear();
+        _bendVels.Clear();
+
         for (int i = 0; i < count; i++)
         {
             _bendAngles.Add(_swayDeg);
@@ -374,37 +478,116 @@ public class CarrierController : MonoBehaviour
     {
         Transform t = stackPivot ? stackPivot : carrierCargoRoot;
         if (!t) return;
+
         for (int i = t.childCount - 1; i >= 0; i--)
             Destroy(t.GetChild(i).gameObject);
     }
 
+    /// <summary>
+    /// 실제로 짐을 월드에 생성하고, 플레이어 속도 방향으로 튀어나가게 하는 부분.
+    /// </summary>
     private void ApplyRealisticDrop(WorldItem wi, Vector3 pos, Vector3 forwardDir)
     {
-        wi.OnDropped(pos, Vector3.zero);
+        if (wi == null) return;
 
-        if (!wi.rb) wi.rb = wi.GetComponent<Rigidbody>();
-        var rb = wi.rb;
-        if (!rb) return;
+        ItemDefinition def = wi.definition;
 
-        if (configureCargoRigidbodies)
+        // 1) 내구도 스냅샷
+        int curDur = 0;
+        int maxDur = 0;
+        bool hasDur = wi.TryGetDurability(out curDur, out maxDur);
+
+        // 2) 드롭 프리팹 결정
+        GameObject prefab = (def != null && def.worldPrefab != null)
+            ? def.worldPrefab
+            : wi.gameObject;
+
+        // 3) 새로운 인스턴스 생성
+        GameObject inst = Instantiate(prefab, pos, Quaternion.identity);
+        WorldItem newWI = inst.GetComponent<WorldItem>();
+
+        if (newWI != null)
         {
-            rb.interpolation = RigidbodyInterpolation.Interpolate;
-            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            rb.angularDamping = Mathf.Max(0.2f, rb.angularDamping);
+            // 내구도 복원
+            if (hasDur && maxDur > 0)
+            {
+                newWI.ApplyDurability(curDur, maxDur, true);
+            }
+
+            if (!newWI.rb) newWI.rb = newWI.GetComponent<Rigidbody>();
+            var rb = newWI.rb;
+            if (rb != null)
+            {
+                if (configureCargoRigidbodies)
+                {
+                    rb.interpolation = RigidbodyInterpolation.Interpolate;
+                    rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                    rb.angularDamping = Mathf.Max(0.2f, rb.angularDamping);
+                }
+
+                if (cargoFrictionMaterial)
+                {
+                    var cols = newWI.GetComponentsInChildren<Collider>(true);
+                    for (int c = 0; c < cols.Length; c++)
+                        cols[c].sharedMaterial = cargoFrictionMaterial;
+                }
+
+                // ── 여기서 "플레이어가 날아가는 방향"으로 속도 설정 ──
+                Vector3 horizVel = new Vector3(sampledVelocity.x, 0f, sampledVelocity.z);
+                float horizSpeed = horizVel.magnitude;
+
+                Vector3 mainDir;
+                float mainSpeed;
+
+                if (horizSpeed > 0.1f)
+                {
+                    // 플레이어 실제 이동 방향 + 속도 상속
+                    mainDir = horizVel.normalized;
+                    mainSpeed = horizSpeed * Mathf.Max(0f, inheritVelocityFactor);
+                }
+                else
+                {
+                    // 거의 안 움직이는 경우에는 forwardDir 기준으로 약하게 튀어나감
+                    Vector3 fwd = forwardDir.sqrMagnitude > 0.0001f
+                        ? forwardDir.normalized
+                        : transform.forward;
+
+                    mainDir = fwd;
+                    mainSpeed = Mathf.Max(0f, cargoForwardSpeed);
+                }
+
+                // 약간의 좌우 랜덤 튕김
+                Vector3 side = Vector3.zero;
+                if (cargoSideSpeedRange.y > 0f)
+                {
+                    Vector3 sideBase = Vector3.Cross(mainDir, Vector3.up);
+                    if (sideBase.sqrMagnitude > 0.0001f)
+                    {
+                        sideBase.Normalize();
+                        if (UnityEngine.Random.value < 0.5f)
+                            sideBase = -sideBase;
+
+                        float sideSpeed = UnityEngine.Random.Range(cargoSideSpeedRange.x, cargoSideSpeedRange.y);
+                        side = sideBase * sideSpeed;
+                    }
+                }
+
+                Vector3 v =
+                    mainDir * mainSpeed +
+                    side +
+                    Vector3.up * cargoUpBias;
+
+#if UNITY_6000_0_OR_NEWER
+                rb.linearVelocity = v;
+#else
+                rb.velocity = v;
+#endif
+
+                rb.angularVelocity = UnityEngine.Random.onUnitSphere * cargoAngularVel;
+            }
         }
 
-        if (cargoFrictionMaterial)
-        {
-            var cols = wi.GetComponentsInChildren<Collider>(true);
-            for (int c = 0; c < cols.Length; c++)
-                cols[c].sharedMaterial = cargoFrictionMaterial;
-        }
-
-        Vector3 side = (UnityEngine.Random.value < 0.5f ? -transform.right : transform.right);
-        float sideSpeed = UnityEngine.Random.Range(cargoSideSpeedRange.x, cargoSideSpeedRange.y);
-        Vector3 v = side * sideSpeed + forwardDir.normalized * Mathf.Max(0f, cargoForwardSpeed) + Vector3.up * cargoUpBias;
-
-        rb.linearVelocity = v;
-        rb.angularVelocity = UnityEngine.Random.onUnitSphere * cargoAngularVel;
+        // 4) 캐리어 안에 숨겨져 있던 원본 제거
+        Destroy(wi.gameObject);
     }
 }

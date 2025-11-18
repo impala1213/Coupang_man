@@ -1,4 +1,3 @@
-// Assets/Scripts/Player/PlayerController.cs
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -84,8 +83,12 @@ public class PlayerController : MonoBehaviour
 
         controller.Move(horizontalVel * Time.deltaTime);
 
-        if (grounded && verticalVel < 0f) verticalVel = -2f;
-        if (!blockInput && Input.GetKeyDown(KeyCode.Space) && grounded) verticalVel = jumpForce;
+        if (grounded && verticalVel < 0f)
+            verticalVel = -2f;
+
+        if (!blockInput && Input.GetKeyDown(KeyCode.Space) && grounded)
+            verticalVel = jumpForce;
+
         verticalVel += gravity * Time.deltaTime;
 
         float totalY = verticalVel + knockbackVelocity.y;
@@ -127,36 +130,40 @@ public class PlayerController : MonoBehaviour
 
     void HandleActions()
     {
+        // Optional: block all interactions while knocked down
+        if (isKnockedDown)
+            return;
+
+        // E pressed
         if (Input.GetKeyDown(KeyCode.E))
         {
             if (currentLever != null)
             {
                 leverUseHeld = true;
                 currentLever.OnUsePressed();
+                return;
             }
-            else
-            {
-                if (InteractionLock.LeverHasFocus)
-                    return;
 
-                Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
-                if (cam && Physics.Raycast(
-                        cam.transform.position,
-                        cam.transform.forward,
-                        out RaycastHit hit,
-                        interactDistance,
-                        interactMask,
-                        QueryTriggerInteraction.Collide))
+            // 2) Otherwise, try to pick up a world item
+            Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+            if (cam && Physics.Raycast(
+                    cam.transform.position,
+                    cam.transform.forward,
+                    out RaycastHit hit,
+                    interactDistance,
+                    interactMask,
+                    QueryTriggerInteraction.Collide))
+            {
+                var worldItem = hit.collider.GetComponentInParent<WorldItem>();
+                if (worldItem && inventory != null)
                 {
-                    var worldItem = hit.collider.GetComponentInParent<WorldItem>();
-                    if (worldItem && inventory != null)
-                    {
-                        inventory.TryPickupWorldItem(worldItem);
-                    }
+                    Debug.Log("Try Pickup");
+                    inventory.TryPickupWorldItem(worldItem);
                 }
             }
         }
 
+        // E released
         if (Input.GetKeyUp(KeyCode.E))
         {
             if (currentLever != null)
@@ -166,6 +173,7 @@ public class PlayerController : MonoBehaviour
             }
         }
 
+        // Drop active item
         if (Input.GetKeyDown(KeyCode.G))
         {
             if (!inventory) return;
@@ -174,9 +182,10 @@ public class PlayerController : MonoBehaviour
             inventory.DropActiveItem(origin, fwd);
         }
 
+        // LMB: active item use hook
         if (Input.GetMouseButtonDown(0))
         {
-            // active item use hook
+            // implement active item use here if needed
         }
     }
 
@@ -224,13 +233,16 @@ public class PlayerController : MonoBehaviour
 
         if (hitLever != currentLever)
         {
+            // exit old lever focus
             if (currentLever != null)
             {
                 currentLever.FocusExit();
             }
 
             currentLever = hitLever;
+            leverUseHeld = false;
 
+            // enter new lever focus
             if (currentLever != null)
             {
                 currentLever.FocusEnter();
@@ -250,6 +262,7 @@ public class PlayerController : MonoBehaviour
             currentLever.FocusExit();
             currentLever = null;
         }
+        leverUseHeld = false;
     }
 
     public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoSpill)
