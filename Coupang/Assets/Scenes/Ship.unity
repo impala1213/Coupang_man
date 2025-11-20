@@ -978,9 +978,13 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 5612423590206130935, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
+    - {fileID: 3668912358656139565, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 137747578756272356, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
+      insertIndex: 4
+      addedObject: {fileID: 832570083}
     - targetCorrespondingSourceObject: {fileID: 137747578756272356, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
       insertIndex: -1
       addedObject: {fileID: 832570076}
@@ -1186,6 +1190,50 @@ MonoBehaviour:
   enableKnockback: 1
   knockbackForce: 80
   spillCargo: 1
+--- !u!95 &832570081 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 6648048388996436004, guid: 0a06e11e61e4524449b7a713901bb8cb, type: 3}
+  m_PrefabInstance: {fileID: 465020917}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &832570083
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 832570075}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73f35dbe912fc3b4c84e0da811c8e743, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  walkSpeed: 2
+  runSpeed: 6
+  gravity: -19.62
+  rotationSpeed: 8
+  wanderRadius: 25
+  wanderPointTolerance: 1.5
+  idleTimeMin: 1.5
+  idleTimeMax: 4
+  detectionRadius: 30
+  viewAngle: 120
+  loseSightTime: 3
+  attackRange: 5
+  attackCooldown: 2.5
+  attackDamage: 50
+  attackOrigin: {fileID: 0}
+  attackExtraRadius: 0.5
+  attackHitDelay: 0.8
+  dropItem: {fileID: 0}
+  dropCount: 1
+  dropScatterRadius: 1.5
+  animator: {fileID: 832570081}
+  speedParam: Speed
+  isDeadParam: IsDead
+  attackTriggerParam: Attack
+  currentState: 0
+  debugSpeed: 0
+  debugAttack: 0
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -1695,6 +1743,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   carrierPivot: {fileID: 1312300507}
   wobbleReference: {fileID: 0}
+  stackVerticalSpacing: 0
   swayAccToDeg: 8
   swayRecoverSpeed: 80
   swayMaxDeg: 10

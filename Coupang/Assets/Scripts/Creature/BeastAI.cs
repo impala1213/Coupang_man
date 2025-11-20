@@ -2,7 +2,7 @@ using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
 [RequireComponent(typeof(Health))]
-public class PolarBearAI : MonoBehaviour
+public class BeastAI : MonoBehaviour
 {
     public enum State
     {
