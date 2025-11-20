@@ -31,9 +31,9 @@ public class PlayerController : MonoBehaviour
     public float knockdownDuration = 0.6f;
 
     [Header("Carrier Drop (Hold)")]
-    public float carrierDropBaseHold = 0.5f;   // 최소 홀드 시간
-    public float carrierDropPerWeight = 0.05f; // 짐 무게(kg)당 추가 시간
-    public float carrierDropMaxHold = 3f;      // 상한
+    public float carrierDropBaseHold = 0.5f;   // minimum hold time
+    public float carrierDropPerWeight = 0.05f; // extra seconds per kg
+    public float carrierDropMaxHold = 3f;      // max required hold time
 
     [Header("Carrier Inspect")]
     public float carrierInspectHoldTime = 0.6f;
@@ -53,11 +53,11 @@ public class PlayerController : MonoBehaviour
     private UniversalLever currentLever;
     private bool leverUseHeld;
 
-    // 지게 드롭 홀드 상태
+    // carrier drop hold state
     private bool carrierDropHolding;
     private float carrierDropTimer;
 
-    // 지게 슬롯 인스펙트 상태
+    // carrier slot inspect state
     private bool carrierInspecting;
     private float carrierInspectTimer;
     private CarrierController carrierInspectTarget;
@@ -67,6 +67,9 @@ public class PlayerController : MonoBehaviour
         controller = GetComponent<CharacterController>();
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+
+        if (!inventory)
+            inventory = FindFirstObjectByType<InventorySystem>();
 
         if (!carrierSlotUI)
             carrierSlotUI = FindFirstObjectByType<CarrierSlotUI>();
@@ -151,7 +154,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleActions()
     {
-        // ── E키: 레버 우선, 아니면 아이템 줍기 ──
+        // ── E key: lever first, otherwise pickup item ──
         if (Input.GetKeyDown(KeyCode.E))
         {
             if (currentLever != null)
@@ -188,30 +191,36 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // ── G키: 일반 아이템 드롭 or 지게 드롭 홀드 시작 ──
+        // ── G key: normal item drop OR carrier drop (hold) ──
         if (Input.GetKeyDown(KeyCode.G))
         {
             if (!inventory) return;
 
             ItemDefinition activeDef = inventory.ActiveDef();
-            bool activeIsCarrier = (activeDef != null && activeDef.isCarrier && carrier != null);
+            bool hasCarrierItem = (activeDef != null && activeDef.isCarrier);
 
-            if (activeIsCarrier)
+            if (hasCarrierItem)
             {
-                // 지게 드롭은 홀드로
+                // Carrier item is selected. Start hold-based drop.
+                if (!carrier)
+                {
+                    Debug.LogWarning("[PlayerController] Active item is marked as carrier, but 'carrier' reference is null. Carrier will not be dropped.");
+                    return;
+                }
+
                 carrierDropHolding = true;
                 carrierDropTimer = 0f;
             }
             else
             {
-                // 일반 아이템은 탭으로 바로 드롭
+                // Normal item: tap to drop immediately
                 Vector3 fwd = transform.forward;
                 Transform origin = dropOrigin ? dropOrigin : transform;
                 inventory.DropActiveItem(origin, fwd);
             }
         }
 
-        // LMB: use active item (hook용)
+        // LMB: use active item (hook placeholder)
         if (Input.GetMouseButtonDown(0))
         {
             // active item use hook
@@ -223,9 +232,9 @@ public class PlayerController : MonoBehaviour
         if (!carrierDropHolding)
             return;
 
+        // If the player releases G while holding, cancel the drop
         if (!Input.GetKey(KeyCode.G))
         {
-            // 홀드 중 키를 떼면 취소
             carrierDropHolding = false;
             carrierDropTimer = 0f;
             return;
@@ -246,6 +255,7 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        // Compute required hold duration based on carrier total weight
         float required = carrierDropBaseHold;
         if (carrier.totalWeight > 0f)
         {
@@ -257,7 +267,7 @@ public class PlayerController : MonoBehaviour
 
         if (carrierDropTimer >= required)
         {
-            // 실제 지게 통째 드롭
+            // Actually drop the carrier as a bundle
             Transform origin = dropOrigin ? dropOrigin : transform;
             Vector3 pos = origin.position + transform.forward * 0.6f + Vector3.up * 0.3f;
             Vector3 fwd = transform.forward;
@@ -267,7 +277,7 @@ public class PlayerController : MonoBehaviour
             {
                 carrier.DropAsBundle(pos, fwd);
 
-                // 인벤토리/플레이어에서 지게 참조 제거
+                // Clear references from inventory and player
                 inventory.carrier = null;
                 carrier = null;
             }
@@ -295,7 +305,7 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // 레버 포커스 중이면 지게 인스펙트 X
+        // If a lever is focused, do not inspect carrier
         if (currentLever != null)
         {
             carrierInspectTimer = 0f;
@@ -308,7 +318,7 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // 바로 앞에 월드 아이템이 있다면, 인스펙트보다 줍기가 우선
+        // If there is an interactable world item directly in front, prefer pickup
         if (FindInteractCandidate(out var _))
         {
             carrierInspectTimer = 0f;

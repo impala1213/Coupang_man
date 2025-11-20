@@ -10,11 +10,14 @@ public class WorldItem : MonoBehaviour
     private Collider[] _colliders;
     private Renderer[] _renderers;
 
-    // ── Carrier 메타 정보 ─────────────────────────────
+    // ── Carrier meta info ─────────────────────────────
     [HideInInspector] public bool isOnCarrier;
     [HideInInspector] public CarrierController carrierOwner;
     [HideInInspector] public int carrierSlotIndex = -1;
     [HideInInspector] public Transform carrierSlotPivot;
+
+    // Used only for special cases (e.g., equipped carrier on player)
+    [HideInInspector] public bool ignoreContainerAutoParent;
 
     void Awake()
     {
@@ -24,18 +27,23 @@ public class WorldItem : MonoBehaviour
     }
 
     /// <summary>
-    /// 인벤토리 픽업: destroyInstance=true → 원본 파괴
-    /// 캐리어 적재:   지금은 사용하지 않음(EnterCarrierMountMode 사용).
+    /// Inventory pickup.
+    /// - destroyInstance = true → destroy world instance (normal items only)
+    /// - destroyInstance = false → only disable physics/colliders/renderers
+    /// Carrier items are never destroyed here.
     /// </summary>
     public void OnPickedUp(bool destroyInstance)
     {
-        if (destroyInstance)
+        bool isCarrierItem = (definition != null && definition.isCarrier);
+
+        // Normal items can be destroyed when picked up.
+        if (destroyInstance && !isCarrierItem)
         {
             Destroy(gameObject);
             return;
         }
 
-        // 옛날 캐리어 숨김 방식 유지(호환용).
+        // Carrier items (and non-destroy path): just disable physics/colliders.
         if (rb)
         {
 #if UNITY_6000_0_OR_NEWER
@@ -47,13 +55,17 @@ public class WorldItem : MonoBehaviour
             rb.isKinematic = true;
             rb.useGravity = false;
         }
-        if (_colliders != null) foreach (var c in _colliders) if (c) c.enabled = false;
-        if (_renderers != null) foreach (var r in _renderers) if (r) r.enabled = false;
+
+        if (_colliders == null) _colliders = GetComponentsInChildren<Collider>(true);
+        foreach (var c in _colliders) if (c) c.enabled = false;
+
+        if (_renderers == null) _renderers = GetComponentsInChildren<Renderer>(true);
+        foreach (var r in _renderers) if (r) r.enabled = false;
     }
 
     /// <summary>
-    /// 캐리어에 실릴 때 호출. CarrierController.TryMount에서 사용.
-    /// 지게 슬롯 피벗 아래로 붙이고, 콜라이더는 꺼 둠(지게 전체 콜라이더만 사용).
+    /// Called when this item is mounted onto a carrier slot.
+    /// Parent becomes the slot pivot, physics disabled, colliders disabled.
     /// </summary>
     public void EnterCarrierMountMode(CarrierController carrier, int slotIndex, Transform slotPivot)
     {
@@ -61,6 +73,9 @@ public class WorldItem : MonoBehaviour
         carrierSlotIndex = slotIndex;
         carrierSlotPivot = slotPivot;
         isOnCarrier = true;
+
+        // While mounted on a carrier, parenting is owned by the carrier.
+        ignoreContainerAutoParent = false; // only carriers use this flag
 
         if (!rb) rb = GetComponent<Rigidbody>();
         if (rb)
@@ -76,13 +91,12 @@ public class WorldItem : MonoBehaviour
         }
 
         if (_colliders == null) _colliders = GetComponentsInChildren<Collider>(true);
-        // 적재 상태에서는 짐 콜라이더는 비활성화(지게 전체 콜라이더로 충돌 처리)
         foreach (var c in _colliders) if (c) c.enabled = false;
 
         if (_renderers == null) _renderers = GetComponentsInChildren<Renderer>(true);
         foreach (var r in _renderers) if (r) r.enabled = true;
 
-        // 슬롯 피벗 아래로 붙이기
+        // Attach under slot pivot.
         transform.SetParent(slotPivot, false);
 
         if (definition != null)
@@ -104,12 +118,11 @@ public class WorldItem : MonoBehaviour
     }
 
     /// <summary>
-    /// 캐리어 경로에서 같은 인스턴스를 다시 월드에 되살릴 때 사용.
-    /// (지게 슬롯에서 탈출 + 물리 복구)
+    /// Called when this item is released back into the world.
+    /// If it was mounted on a carrier, detach from the slot and restore physics.
     /// </summary>
     public void OnDropped(Vector3 worldPos, Vector3 initialVelocity)
     {
-        // 캐리어에 실려 있었으면 탈출 처리
         if (isOnCarrier)
         {
             transform.SetParent(null, true);
@@ -138,12 +151,11 @@ public class WorldItem : MonoBehaviour
         if (_renderers == null) _renderers = GetComponentsInChildren<Renderer>(true);
         foreach (var r in _renderers) if (r) r.enabled = true;
 
-        // 깔끔한 이름
         if (definition && definition.worldPrefab)
             name = definition.worldPrefab.name;
     }
 
-    /// <summary>Durability 스냅샷 읽기. 없으면 false.</summary>
+    /// <summary>Durability snapshot read. Returns false if no Durability component.</summary>
     public bool TryGetDurability(out int current, out int max)
     {
         current = 0; max = 0;
@@ -154,7 +166,7 @@ public class WorldItem : MonoBehaviour
         return true;
     }
 
-    /// <summary>드롭으로 새로 생성된 프리팹에 내구도 반영.</summary>
+    /// <summary>Apply durability to a newly created drop prefab.</summary>
     public void ApplyDurability(int current, int max, bool clamp = true)
     {
         var d = GetComponent<Durability>();

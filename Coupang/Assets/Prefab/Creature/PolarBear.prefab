@@ -123,13 +123,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 2
-  m_Radius: 0.5
+  m_Height: 0.028379094
+  m_Radius: 0.90179014
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0.8, z: 0}
 --- !u!114 &944087326566053069
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -172,6 +172,7 @@ MonoBehaviour:
   attackDamage: 50
   attackOrigin: {fileID: 0}
   attackExtraRadius: 0.5
+  attackHitDelay: 0.4
   dropItem: {fileID: 11400000, guid: 1995a7efd85113243b9761ee1cb486ad, type: 2}
   dropCount: 1
   dropScatterRadius: 1.5

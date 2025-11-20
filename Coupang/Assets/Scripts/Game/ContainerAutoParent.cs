@@ -7,7 +7,7 @@ public class ContainerAutoParent : MonoBehaviour
 {
     [Header("Container")]
     public Transform containerRoot;   // GameSession.containerRoot
-    public Transform outsideParent;   // ShipEnvironmentRoot 같은 함선 루트
+    public Transform outsideParent;   // ShipEnvironmentRoot or similar
 
     [Header("Filter")]
     public LayerMask worldItemLayers = ~0;
@@ -33,14 +33,21 @@ public class ContainerAutoParent : MonoBehaviour
         ResyncSceneItems();
     }
 
-    // GameSession에서 Ship으로 복귀한 직후 다시 호출해줄 메서드
+    /// <summary>
+    /// Re-scan all WorldItems in this scene and parent them to containerRoot
+    /// if inside the trigger volume, otherwise to outsideParent / scene root.
+    /// - Cargos mounted on a Carrier (isOnCarrier / under CarrierController)
+    ///   are always ignored and keep the Carrier as parent.
+    /// - Equipped carriers (on the player) are ignored.
+    /// - All other WorldItems are parented as Container / Ship / Scene root.
+    /// </summary>
     public void ResyncSceneItems()
     {
         if (zoneCollider == null) return;
 
         Scene zoneScene = gameObject.scene;
         Bounds bounds = zoneCollider.bounds;
-        WorldItem[] allWorldItems = Object.FindObjectsByType<WorldItem>(
+        WorldItem[] allWorldItems = UnityEngine.Object.FindObjectsByType<WorldItem>(
             FindObjectsInactive.Include,
             FindObjectsSortMode.None
         );
@@ -50,6 +57,9 @@ public class ContainerAutoParent : MonoBehaviour
             if (wi == null) continue;
             if (wi.gameObject.scene != zoneScene) continue;
             if (((1 << wi.gameObject.layer) & worldItemLayers) == 0) continue;
+
+            if (ShouldIgnore(wi))
+                continue;
 
             Transform t = wi.transform;
             Vector3 pos = t.position;
@@ -73,6 +83,9 @@ public class ContainerAutoParent : MonoBehaviour
         WorldItem wi = other.GetComponentInParent<WorldItem>();
         if (wi == null) return;
 
+        if (ShouldIgnore(wi))
+            return;
+
         ParentToContainer(wi.transform);
     }
 
@@ -84,10 +97,56 @@ public class ContainerAutoParent : MonoBehaviour
         WorldItem wi = other.GetComponentInParent<WorldItem>();
         if (wi == null) return;
 
+        if (ShouldIgnore(wi))
+            return;
+
         if (wi.transform.parent == containerRoot)
         {
             ParentToOutside(wi.transform, gameObject.scene);
         }
+    }
+
+    /// <summary>
+    /// Decide whether ContainerAutoParent should NOT touch this WorldItem.
+    /// - Mounted cargos on a carrier: always true.
+    /// - Carriers equipped on player (ignoreContainerAutoParent && isCarrier): true.
+    /// </summary>
+    private bool ShouldIgnore(WorldItem wi)
+    {
+        // 1) Mounted on a carrier: always keep Carrier as parent.
+        if (IsMountedOnCarrier(wi))
+            return true;
+
+        // 2) Equipped carrier on player: do not re-parent.
+        bool isEquippedCarrier =
+            wi.definition != null &&
+            wi.definition.isCarrier &&
+            wi.ignoreContainerAutoParent;
+
+        if (isEquippedCarrier)
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true if this WorldItem is currently mounted on a carrier.
+    /// i.e., it should always use the carrier as its parent, not container/ship/player.
+    /// </summary>
+    private bool IsMountedOnCarrier(WorldItem wi)
+    {
+        // Explicit mounted state
+        if (wi.isOnCarrier) return true;
+        if (wi.carrierOwner != null) return true;
+
+        // Fallback: child of a CarrierController, but not the carrier itself
+        var ownerCarrier = wi.GetComponentInParent<CarrierController>();
+        var selfCarrier = wi.GetComponent<CarrierController>();
+
+        if (ownerCarrier != null && selfCarrier == null)
+            return true;
+
+        return false;
     }
 
     void ParentToContainer(Transform itemTransform)
@@ -98,15 +157,14 @@ public class ContainerAutoParent : MonoBehaviour
 
     void ParentToOutside(Transform itemTransform, Scene currentScene)
     {
-        // Ship 씬에서는 ShipEnvironmentRoot 같은 outsideParent를 사용
+        // In Ship scene, use outsideParent (ShipRoot) as parent
         if (outsideParent != null && outsideParent.gameObject.scene == currentScene)
         {
             itemTransform.SetParent(outsideParent, true);
         }
         else
         {
-            // Gameplay 씬이나 outsideParent가 다른 씬에 있을 때:
-            // 그냥 씬 루트로 떼어내면 "행성에 남는 짐"이 됨
+            // In other scenes, detach to scene root (planet items, etc.)
             itemTransform.SetParent(null, true);
         }
     }
