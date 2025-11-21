@@ -1,7 +1,7 @@
 using UnityEngine;
 
 
-[RequireComponent(typeof(Collider))]
+
 public class BreakableItem : MonoBehaviour
 {
     public ItemDefinition definition; // breakable=true, 임계값/파편 프리팹 포함

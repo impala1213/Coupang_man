@@ -6,10 +6,13 @@ using UnityEngine.SceneManagement;
 public class ContainerAutoParent : MonoBehaviour
 {
     [Header("Container")]
+    [Tooltip("Root transform used for container local items (in gameplay scene).")]
     public Transform containerRoot;   // GameSession.containerRoot
+    [Tooltip("Root transform used for items in ship environment (e.g., ShipEnvironmentRoot).")]
     public Transform outsideParent;   // ShipEnvironmentRoot or similar
 
     [Header("Filter")]
+    [Tooltip("Which layers are treated as world items for parenting.")]
     public LayerMask worldItemLayers = ~0;
 
     private Collider zoneCollider;
@@ -36,10 +39,11 @@ public class ContainerAutoParent : MonoBehaviour
     /// <summary>
     /// Re-scan all WorldItems in this scene and parent them to containerRoot
     /// if inside the trigger volume, otherwise to outsideParent / scene root.
+    /// Rules:
     /// - Cargos mounted on a Carrier (isOnCarrier / under CarrierController)
     ///   are always ignored and keep the Carrier as parent.
-    /// - Equipped carriers (on the player) are ignored.
-    /// - All other WorldItems are parented as Container / Ship / Scene root.
+    /// - Carriers equipped on player (ignoreContainerAutoParent && isCarrier): ignored.
+    /// - All other WorldItems (including dropped carriers on deck) are parented as Container / Ship.
     /// </summary>
     public void ResyncSceneItems()
     {
@@ -110,10 +114,11 @@ public class ContainerAutoParent : MonoBehaviour
     /// Decide whether ContainerAutoParent should NOT touch this WorldItem.
     /// - Mounted cargos on a carrier: always true.
     /// - Carriers equipped on player (ignoreContainerAutoParent && isCarrier): true.
+    /// - World carriers dropped on deck: false ¡æ treated like normal item.
     /// </summary>
     private bool ShouldIgnore(WorldItem wi)
     {
-        // 1) Mounted on a carrier: always keep Carrier as parent.
+        // 1) Mounted on a carrier: always keep carrier as parent.
         if (IsMountedOnCarrier(wi))
             return true;
 
@@ -135,11 +140,11 @@ public class ContainerAutoParent : MonoBehaviour
     /// </summary>
     private bool IsMountedOnCarrier(WorldItem wi)
     {
-        // Explicit mounted state
+        // Explicit mounted state.
         if (wi.isOnCarrier) return true;
         if (wi.carrierOwner != null) return true;
 
-        // Fallback: child of a CarrierController, but not the carrier itself
+        // Fallback: child of a CarrierController, but not the carrier itself.
         var ownerCarrier = wi.GetComponentInParent<CarrierController>();
         var selfCarrier = wi.GetComponent<CarrierController>();
 
@@ -149,22 +154,22 @@ public class ContainerAutoParent : MonoBehaviour
         return false;
     }
 
-    void ParentToContainer(Transform itemTransform)
+    private void ParentToContainer(Transform itemTransform)
     {
         if (containerRoot == null) return;
         itemTransform.SetParent(containerRoot, true);
     }
 
-    void ParentToOutside(Transform itemTransform, Scene currentScene)
+    private void ParentToOutside(Transform itemTransform, Scene currentScene)
     {
-        // In Ship scene, use outsideParent (ShipRoot) as parent
+        // In Ship scene, use outsideParent (ShipRoot) as parent.
         if (outsideParent != null && outsideParent.gameObject.scene == currentScene)
         {
             itemTransform.SetParent(outsideParent, true);
         }
         else
         {
-            // In other scenes, detach to scene root (planet items, etc.)
+            // In other scenes, detach to scene root (planet items, etc.).
             itemTransform.SetParent(null, true);
         }
     }

@@ -40,10 +40,12 @@ public class InventorySystem : MonoBehaviour
 
     void Awake()
     {
+        // Ensure slot count
         if (slots.Count != slotCount)
         {
             slots.Clear();
-            for (int i = 0; i < slotCount; i++) slots.Add(new Slot());
+            for (int i = 0; i < slotCount; i++)
+                slots.Add(new Slot());
         }
 
         activeIndex = Mathf.Clamp(activeIndex, 0, slotCount - 1);
@@ -55,10 +57,7 @@ public class InventorySystem : MonoBehaviour
             if (player != null)
             {
                 var pivot = player.transform.Find("CarrierPivot");
-                if (pivot != null)
-                    carrierMountPivot = pivot;
-                else
-                    carrierMountPivot = player.transform;
+                carrierMountPivot = pivot != null ? pivot : player.transform;
             }
             else
             {
@@ -71,8 +70,12 @@ public class InventorySystem : MonoBehaviour
     }
 
     // 式式 Query 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    public bool IsEmpty(int i) => i >= 0 && i < slots.Count && slots[i].stack == null;
-    public ItemDefinition Get(int i) => (i >= 0 && i < slots.Count && slots[i].stack != null) ? slots[i].stack.def : null;
+    public bool IsEmpty(int i) =>
+        i >= 0 && i < slots.Count && slots[i].stack == null;
+
+    public ItemDefinition Get(int i) =>
+        (i >= 0 && i < slots.Count && slots[i].stack != null) ? slots[i].stack.def : null;
+
     public ItemDefinition ActiveDef() => Get(activeIndex);
 
     public bool HasCarrierInInventory()
@@ -80,7 +83,8 @@ public class InventorySystem : MonoBehaviour
         for (int i = 0; i < slots.Count; i++)
         {
             var s = slots[i].stack;
-            if (s != null && s.def != null && s.def.isCarrier) return true;
+            if (s != null && s.def != null && s.def.isCarrier)
+                return true;
         }
         return false;
     }
@@ -91,7 +95,13 @@ public class InventorySystem : MonoBehaviour
         {
             bool ok = true;
             for (int k = 0; k < required; k++)
-                if (!IsEmpty(start + k)) { ok = false; break; }
+            {
+                if (!IsEmpty(start + k))
+                {
+                    ok = false;
+                    break;
+                }
+            }
             if (ok) return true;
         }
         return false;
@@ -103,7 +113,13 @@ public class InventorySystem : MonoBehaviour
         {
             bool ok = true;
             for (int k = 0; k < required; k++)
-                if (!IsEmpty(start + k)) { ok = false; break; }
+            {
+                if (!IsEmpty(start + k))
+                {
+                    ok = false;
+                    break;
+                }
+            }
             if (ok) return start;
         }
         return -1;
@@ -132,20 +148,31 @@ public class InventorySystem : MonoBehaviour
         {
             // Durability snapshot
             int cur = -1, max = -1;
-            if (worldItem.TryGetDurability(out var c, out var m)) { cur = c; max = m; }
+            if (worldItem.TryGetDurability(out var c, out var m))
+            {
+                cur = c;
+                max = m;
+            }
 
-            var data = new ItemStackData { def = def, size = need, durCurrent = cur, durMax = max };
+            var data = new ItemStackData
+            {
+                def = def,
+                size = need,
+                durCurrent = cur,
+                durMax = max
+            };
+
             for (int k = 0; k < need; k++)
                 slots[where + k].stack = data;
 
             if (def.isCarrier)
             {
-                // Carrier: reuse this world object and attach to player.
+                // Carrier item: reuse the world instance and attach to player
                 HandleCarrierPickup(worldItem);
             }
             else
             {
-                // Normal items: destroy world instance.
+                // Normal item: destroy world instance
                 worldItem.OnPickedUp(true);
             }
 
@@ -157,12 +184,15 @@ public class InventorySystem : MonoBehaviour
         // No contiguous inventory space: try mounting onto carrier if present.
         if (HasCarrierInInventory())
         {
-            if (!carrier) carrier = UnityEngine.Object.FindFirstObjectByType<CarrierController>();
+            if (!carrier)
+                carrier = UnityEngine.Object.FindFirstObjectByType<CarrierController>();
+
             if (!carrier)
             {
-                Debug.LogWarning("[InventorySystem] Carrier ref missing.");
+                Debug.LogWarning("[InventorySystem] Carrier reference missing.");
                 return false;
             }
+
             if (!def.isCarrier)
                 return carrier.TryMount(worldItem);
         }
@@ -176,8 +206,12 @@ public class InventorySystem : MonoBehaviour
     /// </summary>
     public bool DropActiveItem(Transform dropOrigin, Vector3 forward)
     {
-        var head = (activeIndex >= 0 && activeIndex < slots.Count) ? slots[activeIndex].stack : null;
-        if (head == null || head.def == null) return false;
+        var head = (activeIndex >= 0 && activeIndex < slots.Count)
+            ? slots[activeIndex].stack
+            : null;
+
+        if (head == null || head.def == null)
+            return false;
 
         var def = head.def;
         if (def.isCarrier)
@@ -204,12 +238,7 @@ public class InventorySystem : MonoBehaviour
             }
         }
 
-        for (int i = 0; i < slots.Count; i++)
-            if (slots[i].stack == head) slots[i].stack = null;
-
-        while (activeIndex > 0 && slots[activeIndex].stack == null && slots[activeIndex - 1].stack == null)
-            activeIndex--;
-
+        ClearStackFromSlots(head);
         OnInventoryChanged?.Invoke();
         return true;
     }
@@ -221,21 +250,41 @@ public class InventorySystem : MonoBehaviour
     /// </summary>
     public bool DropCarrierAsBundle(Transform dropOrigin, Vector3 forward)
     {
-        if (activeIndex < 0 || activeIndex >= slots.Count) return false;
+        if (activeIndex < 0 || activeIndex >= slots.Count)
+            return false;
+
         var head = slots[activeIndex].stack;
-        if (head == null || head.def == null || !head.def.isCarrier) return false;
+        if (head == null || head.def == null || !head.def.isCarrier)
+            return false;
 
-        for (int i = 0; i < slots.Count; i++)
-            if (slots[i].stack == head) slots[i].stack = null;
-
-        while (activeIndex > 0 && slots[activeIndex].stack == null && slots[activeIndex - 1].stack == null)
-            activeIndex--;
-
+        ClearStackFromSlots(head);
         OnInventoryChanged?.Invoke();
         return true;
     }
 
     // 式式 Internal helpers 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+
+    /// <summary>
+    /// Clear all slots referencing this stack and adjust activeIndex.
+    /// </summary>
+    private void ClearStackFromSlots(ItemStackData head)
+    {
+        if (head == null) return;
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            if (slots[i].stack == head)
+                slots[i].stack = null;
+        }
+
+        // Move activeIndex left if there are consecutive empty slots.
+        while (activeIndex > 0 &&
+               slots[activeIndex].stack == null &&
+               slots[activeIndex - 1].stack == null)
+        {
+            activeIndex--;
+        }
+    }
 
     /// <summary>
     /// Attach the picked-up carrier world instance to the player pivot and
@@ -252,10 +301,10 @@ public class InventorySystem : MonoBehaviour
             return;
         }
 
-        // Mark this carrier as equipped so ContainerAutoParent does not re-parent it.
+        // Equipped carrier should not be re-parented by ContainerAutoParent.
         worldItem.ignoreContainerAutoParent = true;
 
-        // Store carrier reference on inventory
+        // Store carrier reference on inventory.
         carrier = cc;
 
         // Attach under mount pivot (usually player's back).
@@ -267,30 +316,25 @@ public class InventorySystem : MonoBehaviour
             t.localRotation = Quaternion.identity;
         }
 
-        // Configure physics while worn
+        // Configure physics while worn.
         if (!worldItem.rb) worldItem.rb = worldItem.GetComponent<Rigidbody>();
         if (worldItem.rb)
         {
-#if UNITY_6000_0_OR_NEWER
             worldItem.rb.linearVelocity = Vector3.zero;
-#else
-            worldItem.rb.velocity = Vector3.zero;
-#endif
             worldItem.rb.angularVelocity = Vector3.zero;
             worldItem.rb.isKinematic = true;
             worldItem.rb.useGravity = false;
         }
 
         var cols = worldItem.GetComponentsInChildren<Collider>(true);
-        foreach (var c in cols) c.enabled = false;
+        foreach (var c in cols)
+            c.enabled = false;
 
         var rends = worldItem.GetComponentsInChildren<Renderer>(true);
-        foreach (var r in rends) r.enabled = true;
+        foreach (var r in rends)
+            r.enabled = true;
 
-        // Tell the carrier it is now equipped (prevents instant spill)
-        cc.MarkEquipped(0.3f);
-
-        // Push reference into PlayerController if possible
+        // Push reference into PlayerController if possible.
         if (carrierMountPivot)
         {
             var player = carrierMountPivot.GetComponentInParent<PlayerController>();

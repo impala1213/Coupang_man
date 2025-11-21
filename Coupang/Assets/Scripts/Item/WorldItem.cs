@@ -1,10 +1,20 @@
 // Assets/Scripts/Item/WorldItem.cs
+using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
 public class WorldItem : MonoBehaviour
 {
+    // ─────────────────────────────────────────────
+    // Global registry for all active WorldItems
+    // ─────────────────────────────────────────────
+    private static readonly List<WorldItem> s_allWorldItems = new List<WorldItem>();
+    public static IReadOnlyList<WorldItem> AllWorldItems => s_allWorldItems;
+
+    [Header("Definition")]
     public ItemDefinition definition;
+
+    [Header("Runtime")]
     [HideInInspector] public Rigidbody rb;
 
     private Collider[] _colliders;
@@ -16,105 +26,167 @@ public class WorldItem : MonoBehaviour
     [HideInInspector] public int carrierSlotIndex = -1;
     [HideInInspector] public Transform carrierSlotPivot;
 
-    // Used only for special cases (e.g., equipped carrier on player)
+    /// <summary>
+    /// If true, ContainerAutoParent should not touch this item.
+    /// Used for equipped carriers on player.
+    /// </summary>
     [HideInInspector] public bool ignoreContainerAutoParent;
 
+    /// <summary>Convenience: true if this item is a carrier item.</summary>
+    public bool IsCarrierItem => definition != null && definition.isCarrier;
+
+    // ─────────────────────────────────────────────
+    // Unity lifecycle
+    // ─────────────────────────────────────────────
     void Awake()
     {
         if (!rb) rb = GetComponent<Rigidbody>();
-        _colliders = GetComponentsInChildren<Collider>(true);
-        _renderers = GetComponentsInChildren<Renderer>(true);
+        EnsureCaches();
+    }
+
+    void OnEnable()
+    {
+        if (!s_allWorldItems.Contains(this))
+            s_allWorldItems.Add(this);
+    }
+
+    void OnDisable()
+    {
+        s_allWorldItems.Remove(this);
+    }
+
+    void OnDestroy()
+    {
+        s_allWorldItems.Remove(this);
+    }
+
+    // ─────────────────────────────────────────────
+    // Internals
+    // ─────────────────────────────────────────────
+    private void EnsureCaches()
+    {
+        if (_colliders == null || _colliders.Length == 0)
+            _colliders = GetComponentsInChildren<Collider>(true);
+
+        if (_renderers == null || _renderers.Length == 0)
+            _renderers = GetComponentsInChildren<Renderer>(true);
     }
 
     /// <summary>
     /// Inventory pickup.
-    /// - destroyInstance = true → destroy world instance (normal items only)
+    /// - destroyInstance = true  → destroy world instance (normal items)
     /// - destroyInstance = false → only disable physics/colliders/renderers
-    /// Carrier items are never destroyed here.
+    /// Carrier items should use destroyInstance = false and be reused.
     /// </summary>
     public void OnPickedUp(bool destroyInstance)
     {
-        bool isCarrierItem = (definition != null && definition.isCarrier);
+        EnsureCaches();
+
+        bool isCarrier = IsCarrierItem;
 
         // Normal items can be destroyed when picked up.
-        if (destroyInstance && !isCarrierItem)
+        if (destroyInstance && !isCarrier)
         {
             Destroy(gameObject);
             return;
         }
 
-        // Carrier items (and non-destroy path): just disable physics/colliders.
+        // Disable physics and interaction in world.
+        if (!rb) rb = GetComponent<Rigidbody>();
         if (rb)
         {
-#if UNITY_6000_0_OR_NEWER
             rb.linearVelocity = Vector3.zero;
-#else
-            rb.velocity = Vector3.zero;
-#endif
             rb.angularVelocity = Vector3.zero;
             rb.isKinematic = true;
             rb.useGravity = false;
         }
 
-        if (_colliders == null) _colliders = GetComponentsInChildren<Collider>(true);
-        foreach (var c in _colliders) if (c) c.enabled = false;
+        if (_colliders != null)
+        {
+            foreach (var c in _colliders)
+            {
+                if (c) c.enabled = false;
+            }
+        }
 
-        if (_renderers == null) _renderers = GetComponentsInChildren<Renderer>(true);
-        foreach (var r in _renderers) if (r) r.enabled = false;
+        if (_renderers != null)
+        {
+            foreach (var r in _renderers)
+            {
+                if (r) r.enabled = false;
+            }
+        }
     }
 
     /// <summary>
     /// Called when this item is mounted onto a carrier slot.
     /// Parent becomes the slot pivot, physics disabled, colliders disabled.
+    /// NOTE: original world scale is preserved (we do not shrink on carrier).
     /// </summary>
     public void EnterCarrierMountMode(CarrierController carrier, int slotIndex, Transform slotPivot)
     {
+        EnsureCaches();
+
         carrierOwner = carrier;
         carrierSlotIndex = slotIndex;
         carrierSlotPivot = slotPivot;
         isOnCarrier = true;
 
         // While mounted on a carrier, parenting is owned by the carrier.
-        ignoreContainerAutoParent = false; // only carriers use this flag
+        ignoreContainerAutoParent = false;
 
         if (!rb) rb = GetComponent<Rigidbody>();
         if (rb)
         {
-#if UNITY_6000_0_OR_NEWER
             rb.linearVelocity = Vector3.zero;
-#else
-            rb.velocity = Vector3.zero;
-#endif
             rb.angularVelocity = Vector3.zero;
             rb.isKinematic = true;
             rb.useGravity = false;
         }
 
-        if (_colliders == null) _colliders = GetComponentsInChildren<Collider>(true);
-        foreach (var c in _colliders) if (c) c.enabled = false;
+        if (_colliders != null)
+        {
+            foreach (var c in _colliders)
+            {
+                if (c) c.enabled = false;
+            }
+        }
 
-        if (_renderers == null) _renderers = GetComponentsInChildren<Renderer>(true);
-        foreach (var r in _renderers) if (r) r.enabled = true;
+        if (_renderers != null)
+        {
+            foreach (var r in _renderers)
+            {
+                if (r) r.enabled = true;
+            }
+        }
 
-        // Attach under slot pivot.
+        // Save world scale before reparent
+        Vector3 worldScaleBefore = transform.lossyScale;
+
+        // Attach under slot pivot
         transform.SetParent(slotPivot, false);
 
+        // Position / rotation on carrier
         if (definition != null)
         {
-            Vector3 pos = definition.carrierLocalPosition;
-            Vector3 euler = definition.carrierLocalEuler;
-            Vector3 scale = definition.carrierLocalScale;
-            if (scale == Vector3.zero) scale = Vector3.one;
-
-            transform.localPosition = pos;
-            transform.localEulerAngles = euler;
-            transform.localScale = scale;
+            transform.localPosition = definition.carrierLocalPosition;
+            transform.localEulerAngles = definition.carrierLocalEuler;
         }
         else
         {
             transform.localPosition = Vector3.zero;
             transform.localEulerAngles = Vector3.zero;
         }
+
+        // Restore world scale by adjusting localScale against parent scale
+        Transform parent = transform.parent;
+        Vector3 parentScale = parent ? parent.lossyScale : Vector3.one;
+
+        float lx = parentScale.x != 0f ? worldScaleBefore.x / parentScale.x : worldScaleBefore.x;
+        float ly = parentScale.y != 0f ? worldScaleBefore.y / parentScale.y : worldScaleBefore.y;
+        float lz = parentScale.z != 0f ? worldScaleBefore.z / parentScale.z : worldScaleBefore.z;
+
+        transform.localScale = new Vector3(lx, ly, lz);
     }
 
     /// <summary>
@@ -123,6 +195,8 @@ public class WorldItem : MonoBehaviour
     /// </summary>
     public void OnDropped(Vector3 worldPos, Vector3 initialVelocity)
     {
+        EnsureCaches();
+
         if (isOnCarrier)
         {
             transform.SetParent(null, true);
@@ -132,6 +206,9 @@ public class WorldItem : MonoBehaviour
             carrierSlotPivot = null;
         }
 
+        // Once dropped to world, allow container/ship parenting again.
+        ignoreContainerAutoParent = false;
+
         transform.position = worldPos;
 
         if (!rb) rb = GetComponent<Rigidbody>();
@@ -139,17 +216,23 @@ public class WorldItem : MonoBehaviour
 
         rb.isKinematic = false;
         rb.useGravity = true;
-#if UNITY_6000_0_OR_NEWER
         rb.linearVelocity = initialVelocity;
-#else
-        rb.velocity = initialVelocity;
-#endif
 
-        if (_colliders == null) _colliders = GetComponentsInChildren<Collider>(true);
-        foreach (var c in _colliders) if (c) c.enabled = true;
+        if (_colliders != null)
+        {
+            foreach (var c in _colliders)
+            {
+                if (c) c.enabled = true;
+            }
+        }
 
-        if (_renderers == null) _renderers = GetComponentsInChildren<Renderer>(true);
-        foreach (var r in _renderers) if (r) r.enabled = true;
+        if (_renderers != null)
+        {
+            foreach (var r in _renderers)
+            {
+                if (r) r.enabled = true;
+            }
+        }
 
         if (definition && definition.worldPrefab)
             name = definition.worldPrefab.name;
@@ -158,9 +241,12 @@ public class WorldItem : MonoBehaviour
     /// <summary>Durability snapshot read. Returns false if no Durability component.</summary>
     public bool TryGetDurability(out int current, out int max)
     {
-        current = 0; max = 0;
+        current = 0;
+        max = 0;
+
         var d = GetComponent<Durability>();
         if (!d) return false;
+
         current = d.current;
         max = d.max;
         return true;
