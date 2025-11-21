@@ -560,6 +560,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   definition: {fileID: 11400000, guid: bde7082dfdf8aef4397181f564c2e1bc, type: 2}
   rb: {fileID: 9201680470027675507}
+  isOnCarrier: 0
+  carrierOwner: {fileID: 0}
+  carrierSlotIndex: -1
+  carrierSlotPivot: {fileID: 0}
+  ignoreContainerAutoParent: 0
 --- !u!1 &2275238732292756148
 GameObject:
   m_ObjectHideFlags: 0
@@ -1127,7 +1132,6 @@ GameObject:
   - component: {fileID: 2031955981970050554}
   - component: {fileID: 7854558863087492652}
   - component: {fileID: 6933663667257268947}
-  - component: {fileID: 7850213968441404175}
   - component: {fileID: 960669841660578157}
   - component: {fileID: 774389386636692668}
   m_Layer: 0
@@ -1207,12 +1211,18 @@ MonoBehaviour:
     m_Bits: 0
   cameraSwitcher: {fileID: 7854558863087492652}
   inventory: {fileID: 6933663667257268947}
-  carrier: {fileID: 7850213968441404175}
+  carrier: {fileID: 0}
   dropOrigin: {fileID: 0}
   canBeKnockedBack: 1
   knockbackDamping: 5
   knockbackUpFactor: 0.5
   knockdownDuration: 0.6
+  carrierDropBaseHold: 0.5
+  carrierDropPerWeight: 0.05
+  carrierDropMaxHold: 3
+  carrierInspectHoldTime: 0.6
+  carrierInspectMaxDistance: 4
+  carrierSlotUI: {fileID: 0}
   debugLever: 0
 --- !u!114 &7854558863087492652
 MonoBehaviour:
@@ -1246,47 +1256,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   slotCount: 5
-  carrier: {fileID: 7850213968441404175}
+  carrier: {fileID: 0}
+  carrierMountPivot: {fileID: 0}
   activeIndex: 0
   slots: []
---- !u!114 &7850213968441404175
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4085519168744559420}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cbea7aaa0f962d64d9a306b09a942839, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  carrierCargoRoot: {fileID: 8433350317762188388}
-  stackPivot: {fileID: 2480350700721954383}
-  wobbleReference: {fileID: 0}
-  swayAccToDeg: 8
-  swayRecoverSpeed: 80
-  swayMaxDeg: 10
-  swayXOffsetPerDeg: 0.0008
-  useElasticBend: 1
-  bendStiffness: 14
-  bendDamping: 3.5
-  bendAccToDrive: 4
-  bendUpAmplify: 1.1
-  bendMaxDegPerLayer: 8
-  bendXOffsetPerDeg: 0.0006
-  enableImpactSpill: 1
-  fallHeightTrigger: 3
-  impactSpeedTrigger: 8
-  knockSpeedTrigger: 10
-  cargoSideSpeedRange: {x: 0.25, y: 0.8}
-  cargoForwardSpeed: 0.2
-  cargoUpBias: -0.1
-  cargoAngularVel: 1.5
-  cargoFrictionMaterial: {fileID: 0}
-  configureCargoRigidbodies: 1
-  totalWeight: 0
-  stackTotalHeight: 0
 --- !u!114 &960669841660578157
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1314,7 +1287,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   inventory: {fileID: 6933663667257268947}
-  carrier: {fileID: 7850213968441404175}
+  carrier: {fileID: 0}
   dropOrigin: {fileID: 8186424562861070311}
 --- !u!1 &4240230581218325773
 GameObject:

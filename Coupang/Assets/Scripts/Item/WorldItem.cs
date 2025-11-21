@@ -121,7 +121,7 @@ public class WorldItem : MonoBehaviour
     /// <summary>
     /// Called when this item is mounted onto a carrier slot.
     /// Parent becomes the slot pivot, physics disabled, colliders disabled.
-    /// NOTE: original world scale is preserved (we do not shrink on carrier).
+    /// Scale is kept as it was in world; only position/rotation are adjusted.
     /// </summary>
     public void EnterCarrierMountMode(CarrierController carrier, int slotIndex, Transform slotPivot)
     {
@@ -160,33 +160,26 @@ public class WorldItem : MonoBehaviour
             }
         }
 
-        // Save world scale before reparent
-        Vector3 worldScaleBefore = transform.lossyScale;
-
-        // Attach under slot pivot
+        // Attach under slot pivot, but keep current world scale.
+        // SetParent(worldPositionStays: false) converts world scale → local scale
+        // so the visual scale remains exactly the same.
         transform.SetParent(slotPivot, false);
 
-        // Position / rotation on carrier
         if (definition != null)
         {
-            transform.localPosition = definition.carrierLocalPosition;
-            transform.localEulerAngles = definition.carrierLocalEuler;
+            Vector3 pos = definition.carrierLocalPosition;
+            Vector3 euler = definition.carrierLocalEuler;
+
+            // Only adjust local position and rotation.
+            // DO NOT change localScale → keep item scale as it was in world.
+            transform.localPosition = pos;
+            transform.localEulerAngles = euler;
         }
         else
         {
             transform.localPosition = Vector3.zero;
             transform.localEulerAngles = Vector3.zero;
         }
-
-        // Restore world scale by adjusting localScale against parent scale
-        Transform parent = transform.parent;
-        Vector3 parentScale = parent ? parent.lossyScale : Vector3.one;
-
-        float lx = parentScale.x != 0f ? worldScaleBefore.x / parentScale.x : worldScaleBefore.x;
-        float ly = parentScale.y != 0f ? worldScaleBefore.y / parentScale.y : worldScaleBefore.y;
-        float lz = parentScale.z != 0f ? worldScaleBefore.z / parentScale.z : worldScaleBefore.z;
-
-        transform.localScale = new Vector3(lx, ly, lz);
     }
 
     /// <summary>

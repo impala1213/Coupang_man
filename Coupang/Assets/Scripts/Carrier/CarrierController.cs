@@ -1,17 +1,26 @@
-// Assets/Scripts/Player/CarrierController.cs
+// Assets/Scripts/Carrier/CarrierController.cs
 using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+
+// Unity 6 기준: PhysicsMaterial 사용
+using PhysicsMaterial = UnityEngine.PhysicsMaterial;
 
 [DisallowMultipleComponent]
 public class CarrierController : MonoBehaviour
 {
     // ───────────── References ─────────────
     [Header("References")]
-    public Transform carrierCargoRoot;   // visual stack parent (static on back)
-    public Transform stackPivot;         // parent for all slot pivots (lean target)
+    [Tooltip("Visual parent for the carrier frame and its cargo. If null, defaults to this transform.")]
+    public Transform carrierCargoRoot;   // visual stack parent (on back)
+    [Tooltip("Parent under which mounted item slot pivots are created.")]
+    public Transform stackPivot;         // parent for all loaded items / slot pivots
+    [Tooltip("Transform used for velocity sampling (usually the player root).")]
     public Transform wobbleReference;    // usually player root (for velocity sampling)
+
+    private Rigidbody _rb;
+    private Collider[] _colliders;
 
     // ───────────── Visual sway (auto recovers when stopping) ─────────────
     [Header("Sway (auto-recover)")]
@@ -105,10 +114,16 @@ public class CarrierController : MonoBehaviour
     // ───────────── Unity lifecycle ─────────────
     void Awake()
     {
+        if (!carrierCargoRoot) carrierCargoRoot = transform;
+
         EnsureStackPivot();
+
         _lastPos = wobbleReference ? wobbleReference.position : transform.position;
         _lastHorizVel = Vector3.zero;
         _lastSpillTime = -999f;
+
+        _rb = GetComponent<Rigidbody>();
+        _colliders = GetComponentsInChildren<Collider>(true);
     }
 
     void Start()
@@ -124,6 +139,7 @@ public class CarrierController : MonoBehaviour
     void Update()
     {
         float dt = Time.deltaTime;
+
         UpdateTelemetry(dt);
         UpdateDerived();
         UpdateSway(dt);
@@ -141,6 +157,7 @@ public class CarrierController : MonoBehaviour
 
     /// <summary>
     /// PlayerController should call this each frame to report grounded and position.
+    /// Used for impact-based auto spill.
     /// </summary>
     public void ReportGroundedState(bool grounded, Vector3 worldPos, Vector3 controllerVelocity)
     {
@@ -209,58 +226,48 @@ public class CarrierController : MonoBehaviour
 
     /// <summary>
     /// Try to mount a world item onto the carrier (top stacking).
-    /// Uses real mesh bounds to stack with no overlap and no gaps.
+    /// Uses ItemDefinition.stackSize.y for spacing so items do not overlap.
     /// </summary>
     public bool TryMount(WorldItem world)
     {
         if (!world || !world.definition) return false;
-        if (world.definition.isCarrier) return false;
+        if (world.definition.isCarrier) return false; // do not load carrier into carrier
 
         EnsureStackPivot();
 
-        // ── 1. Calculate target bottom Y for this new item ─────────────
-        float baseY = stackPivot.position.y;
-        float targetBottomY = baseY;
-
-        if (mounted.Count > 0)
+        // Sum of all existing stack heights using ItemDefinition.stackSize.y
+        float currentY = 0f;
+        for (int i = 0; i < mounted.Count; i++)
         {
-            var last = mounted[mounted.Count - 1];
-            if (last != null)
+            var w = mounted[i];
+            if (w && w.definition)
             {
-                Bounds lastBounds = GetWorldBounds(last);
-                // New item bottom should exactly sit on previous top
-                targetBottomY = lastBounds.max.y;
+                var sz = w.definition.stackSize;
+                float h = Mathf.Max(0.01f, sz.y);
+                currentY += h;
             }
         }
 
-        // ── 2. Create slot pivot under stackPivot ─────────────
+        var def = world.definition;
+        Vector3 newSize = def.stackSize;
+        float newHeight = Mathf.Max(0.01f, newSize.y);
+
+        // Place new item so its center is at (current total height + half of its own height)
+        float centerY = currentY + newHeight * 0.5f;
+
         int slotIndex = mounted.Count;
         GameObject slotGO = new GameObject($"CarrierSlot_{slotIndex}");
         Transform slotPivot = slotGO.transform;
         slotPivot.SetParent(stackPivot, false);
-        slotPivot.localPosition = Vector3.zero;
+        slotPivot.localPosition = new Vector3(0f, centerY, -0.1f);
         slotPivot.localRotation = Quaternion.identity;
         slotPivot.localScale = Vector3.one;
 
-        // ── 3. Mount (parent + local pose) ─────────────
+        // Mount world item to carrier slot
         world.EnterCarrierMountMode(this, slotIndex, slotPivot);
 
-        // ── 4. Snap new item bottom to targetBottomY ─────────────
-        Bounds newBounds = GetWorldBounds(world);
-        float bottomY = newBounds.min.y;
-        float dy = targetBottomY - bottomY;
-
-        // Move the item up/down so its bottom matches the stack top
-        world.transform.position += new Vector3(0f, dy, 0f);
-
-        // After moving the item, align slotPivot's Y to the item's bottom,
-        // so bend system still sees children in correct order.
-        Vector3 sp = slotPivot.position;
-        sp.y = targetBottomY;
-        slotPivot.position = sp;
-
         mounted.Add(world);
-        _lastChildCount = -1;
+        _lastChildCount = -1; // rebuild bend chain
         return true;
     }
 
@@ -270,9 +277,11 @@ public class CarrierController : MonoBehaviour
     /// </summary>
     public void DropAsBundle(Vector3 worldPos, Vector3 forward)
     {
+        // Detach the carrier root from its current parent (usually the player).
         Transform root = transform;
         root.SetParent(null, true);
 
+        // Compute a flat forward direction based on the given forward.
         Vector3 flatF = new Vector3(forward.x, 0f, forward.z);
         if (flatF.sqrMagnitude < 0.0001f)
             flatF = root.forward;
@@ -283,21 +292,56 @@ public class CarrierController : MonoBehaviour
         else
             flatF = Vector3.forward;
 
+        // Place the carrier bundle in the world.
         root.position = worldPos;
         root.rotation = Quaternion.LookRotation(flatF, Vector3.up);
 
+        // Enable physics so gravity applies after dropping.
+        if (_rb == null)
+            _rb = GetComponent<Rigidbody>();
+
+        if (_rb != null)
+        {
+            _rb.isKinematic = false;
+            _rb.useGravity = true;
+        }
+
+        // Enable all colliders so carrier can collide with world after drop.
+        if (_colliders == null || _colliders.Length == 0)
+            _colliders = GetComponentsInChildren<Collider>(true);
+
+        if (_colliders != null)
+        {
+            foreach (var c in _colliders)
+            {
+                if (!c) continue;
+                c.enabled = true;
+            }
+        }
+
+        // Mark this carrier as a dropped world object so it no longer reacts
+        // to player-based impact spill or sway/bend updates (only physics).
         isDroppedWorldCarrier = true;
 
+        // Reset bend state so visuals can rebuild cleanly if needed.
         _bendAngles.Clear();
         _bendVels.Clear();
         _lastChildCount = -1;
     }
 
+    /// <summary>
+    /// Called by InventorySystem when player drops the carrier item (quick drop).
+    /// All mounted cargo spill separately in this path.
+    /// </summary>
     public void SpillAllOnCarrierDrop(Vector3 origin, Vector3 forward)
     {
         SpillAllAt(origin, forward);
     }
 
+    /// <summary>
+    /// Spill all current mounted cargo to world.
+    /// forwardDir is used as fallback direction when no velocity is present.
+    /// </summary>
     public void SpillAllAt(Vector3 origin, Vector3 forwardDir)
     {
         for (int i = 0; i < mounted.Count; i++)
@@ -320,6 +364,10 @@ public class CarrierController : MonoBehaviour
 
     public bool HasAnyMounted() => mounted.Count > 0;
 
+    /// <summary>
+    /// Build debug string listing mounted items and slot indices.
+    /// Used by CarrierSlotUI.
+    /// </summary>
     public string GetSlotDebugString()
     {
         var sb = new StringBuilder();
@@ -397,19 +445,13 @@ public class CarrierController : MonoBehaviour
         {
             var w = mounted[i];
             if (!w || !w.definition) continue;
-            totalWeight += Mathf.Max(0.01f, w.definition.weight);
-        }
 
-        if (mounted.Count > 0)
-        {
-            var first = mounted[0];
-            var last = mounted[mounted.Count - 1];
-            if (first != null && last != null && stackPivot != null)
-            {
-                Bounds bFirst = GetWorldBounds(first);
-                Bounds bLast = GetWorldBounds(last);
-                stackTotalHeight = Mathf.Max(0f, bLast.max.y - bFirst.min.y);
-            }
+            // Use ItemDefinition.stackSize for all derived info
+            float wWeight = Mathf.Max(0.01f, w.definition.weight);
+            float h = Mathf.Max(0.01f, w.definition.stackSize.y);
+
+            totalWeight += wWeight;
+            stackTotalHeight += h;
         }
     }
 
@@ -455,12 +497,16 @@ public class CarrierController : MonoBehaviour
 
         _tmpChildren.Clear();
         for (int i = 0; i < n; i++)
-            _tmpChildren.Add(stackPivot.GetChild(i));
+        {
+            var child = stackPivot.GetChild(i);
+            if (child != null)
+                _tmpChildren.Add(child);
+        }
 
         float accX = transform.InverseTransformVector(sampledAcceleration).x;
         float baseDrive = accX * bendAccToDrive;
 
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < _tmpChildren.Count; i++)
         {
             float target = (i == 0) ? baseDrive : _bendAngles[i - 1];
             float angle = _bendAngles[i];
@@ -479,6 +525,8 @@ public class CarrierController : MonoBehaviour
             float visDeg = Mathf.Clamp(angle * amp, -bendMaxDegPerLayer * 2f, bendMaxDegPerLayer * 2f);
 
             var t = _tmpChildren[i];
+            if (t == null) continue;
+
             var e = t.localEulerAngles;
             e.x = 0f;
             e.y = 0f;
@@ -537,47 +585,6 @@ public class CarrierController : MonoBehaviour
     }
 
     /// <summary>
-    /// Get world-space bounds of an item's visible/physical size.
-    /// </summary>
-    private Bounds GetWorldBounds(WorldItem wi)
-    {
-        // safe default
-        var defaultBounds = new Bounds(wi != null ? wi.transform.position : Vector3.zero,
-            new Vector3(0.4f, 0.4f, 0.3f));
-
-        if (wi == null) return defaultBounds;
-
-        var renderers = wi.GetComponentsInChildren<Renderer>(true);
-        if (renderers != null && renderers.Length > 0)
-        {
-            Bounds b = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                b.Encapsulate(renderers[i].bounds);
-            return b;
-        }
-
-        var colliders = wi.GetComponentsInChildren<Collider>(true);
-        if (colliders != null && colliders.Length > 0)
-        {
-            Bounds b = colliders[0].bounds;
-            for (int i = 1; i < colliders.Length; i++)
-                b.Encapsulate(colliders[i].bounds);
-            return b;
-        }
-
-        return defaultBounds;
-    }
-
-    /// <summary>
-    /// Returns the vertical stack height for a world item (in meters).
-    /// </summary>
-    private float GetStackHeight(WorldItem wi)
-    {
-        Bounds b = GetWorldBounds(wi);
-        return Mathf.Max(0.01f, b.size.y);
-    }
-
-    /// <summary>
     /// Actually returns the item to the world and applies realistic velocity
     /// based on sampled player movement.
     /// </summary>
@@ -626,6 +633,7 @@ public class CarrierController : MonoBehaviour
             side +
             Vector3.up * cargoUpBias;
 
+        // Return WorldItem from carrier mount mode back to world physics.
         wi.OnDropped(pos, v);
 
         if (!wi.rb) wi.rb = wi.GetComponent<Rigidbody>();

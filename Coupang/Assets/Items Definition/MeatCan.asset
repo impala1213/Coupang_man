@@ -20,11 +20,11 @@ MonoBehaviour:
   isCarrier: 0
   slotSize: 1
   weight: 3
-  stackSize: {x: 1, y: 1, z: 1}
-  stackVisualPrefab: {fileID: 0}
+  stackSize: {x: 0.37074694, y: 0.094646744, z: 0.2530015}
+  stackVisualPrefab: {fileID: 2635283057471754944, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
   stackColor: {r: 0.7, g: 0.7, b: 0.7, a: 1}
   carrierLocalPosition: {x: 0, y: 0, z: 0}
-  carrierLocalEuler: {x: 0, y: 0, z: 0}
+  carrierLocalEuler: {x: 0, y: 90, z: 0}
   carrierLocalScale: {x: 1, y: 1, z: 1}
   worldPrefab: {fileID: 2635283057471754944, guid: 8ec1bfc78574cf34b81a4d02da5c512a, type: 3}
   breakable: 1
