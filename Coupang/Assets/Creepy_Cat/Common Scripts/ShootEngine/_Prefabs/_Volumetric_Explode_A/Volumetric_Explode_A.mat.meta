@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 9a02f4b1d02792549a589fea375550e9
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 231805
+  packageName: 3D Scifi Kit Vol 4
+  packageVersion: 2.0
+  assetPath: Assets/Creepy_Cat/Common Scripts/ShootEngine/_Prefabs/_Volumetric_Explode_A/Volumetric_Explode_A.mat
+  uploadId: 816882

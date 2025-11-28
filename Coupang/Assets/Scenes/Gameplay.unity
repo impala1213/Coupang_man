@@ -320,7 +320,7 @@ MonoBehaviour:
   terrainParent: {fileID: 1444500474}
   planetContainerAnchor: {fileID: 0}
   mapRunner: {fileID: 1444500476}
-  landingHeightOffset: 0.1
+  landingHeightOffset: -6.7
 --- !u!114 &1444500476
 MonoBehaviour:
   m_ObjectHideFlags: 0

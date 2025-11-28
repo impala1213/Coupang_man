@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 419152790d2b37c458b8770e85c1c858
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 231805
+  packageName: 3D Scifi Kit Vol 4
+  packageVersion: 2.0
+  assetPath: Assets/Creepy_Cat/Common Scripts/ShootEngine/_Prefabs/_Volumetric_Explode_A/Volumetric_Explode_A.shader
+  uploadId: 816882

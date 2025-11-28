@@ -153,27 +153,27 @@ MonoBehaviour:
   m_GameObject: {fileID: 137747578756272356}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4617fc52456eee24e86d41f688ed4054, type: 3}
+  m_Script: {fileID: 11500000, guid: 73f35dbe912fc3b4c84e0da811c8e743, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   walkSpeed: 2
-  runSpeed: 9
+  runSpeed: 6
   gravity: -19.62
   rotationSpeed: 8
-  wanderRadius: 150
+  wanderRadius: 25
   wanderPointTolerance: 1.5
-  idleTimeMin: 3
-  idleTimeMax: 10
+  idleTimeMin: 1.5
+  idleTimeMax: 4
   detectionRadius: 30
   viewAngle: 120
-  loseSightTime: 10
-  attackRange: 4
+  loseSightTime: 3
+  attackRange: 2.5
   attackCooldown: 1.5
-  attackDamage: 50
+  attackDamage: 20
   attackOrigin: {fileID: 0}
   attackExtraRadius: 0.5
   attackHitDelay: 0.4
-  dropItem: {fileID: 11400000, guid: 1995a7efd85113243b9761ee1cb486ad, type: 2}
+  dropItem: {fileID: 0}
   dropCount: 1
   dropScatterRadius: 1.5
   animator: {fileID: 6648048388996436004}

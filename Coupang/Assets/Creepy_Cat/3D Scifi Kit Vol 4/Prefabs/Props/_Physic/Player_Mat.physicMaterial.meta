@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 1262d87ecf94a4542ba7d7323d37f9ea
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 13400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 231805
+  packageName: 3D Scifi Kit Vol 4
+  packageVersion: 2.0
+  assetPath: Assets/Creepy_Cat/3D Scifi Kit Vol 4/Prefabs/Props/_Physic/Player_Mat.physicMaterial
+  uploadId: 816882
