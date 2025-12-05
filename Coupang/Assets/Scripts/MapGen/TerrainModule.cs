@@ -8,4 +8,10 @@ public abstract class TerrainModule : ScriptableObject
     {
         return parent.position;
     }
+
+    public virtual bool TryGetCaveEntranceHint(MapProfile profile, Transform parent, out Vector3 pos)
+    {
+        pos = Vector3.zero;
+        return false;
+    }
 }

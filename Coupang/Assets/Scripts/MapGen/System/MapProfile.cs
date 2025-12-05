@@ -33,6 +33,32 @@ public class MapProfile : ScriptableObject
     [Header("Terrain Logic")]
     public TerrainModule terrainModule;
 
+    [Header("Cave Logic")]
+    public CaveModule caveModule;
+
+    [Header("Entrance Prefabs")]
+    [Tooltip("Prefab for the entrance on the surface. Should have a trigger collider and EntrancePortal component.")]
+    public GameObject surfaceEntrancePrefab;
+
+    [Tooltip("Prefab for the entrance inside the cave (first layer). Should have a trigger collider and EntrancePortal component.")]
+    public GameObject caveEntrancePrefab;
+
+    [Tooltip("Y offset added when placing the surface entrance prefab.")]
+    public float surfaceEntranceYOffset = 0.2f;
+
+    [Tooltip("Y offset added when placing the cave entrance prefab.")]
+    public float caveEntranceYOffset = 0.2f;
+
+    [Header("Surface Entrance Placement")]
+    [Tooltip("Minimum horizontal distance from landing position to surface entrance.")]
+    public float surfaceEntranceMinDistanceFromLanding = 15f;
+
+    [Tooltip("Maximum horizontal distance from landing position to surface entrance.")]
+    public float surfaceEntranceMaxDistanceFromLanding = 35f;
+
+    [Tooltip("Number of random samples around the landing point to find a valid entrance position.")]
+    public int surfaceEntrancePlacementAttempts = 12;
+
     [System.Serializable]
     public class StructureEntry
     {

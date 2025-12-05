@@ -1,0 +1,61 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: befa026f1369b7f41b62b0678128e466, type: 3}
+  m_Name: HeightmapCaveModule
+  m_EditorClassIdentifier: 
+  useProfileGrid: 1
+  gridWidth: 64
+  gridLength: 64
+  cellSize: 2
+  floorBaseHeight: -150
+  floorHeightScale: 15
+  floorNoiseScale: 0.02
+  floorOctaves: 4
+  floorLacunarity: 2
+  floorPersistence: 0.45
+  useDomainWarp: 1
+  warpNoiseScale: 0.05
+  warpStrength: 20
+  useEdgeWalls: 1
+  edgeWallWidth: 60
+  edgeWallHeight: 60
+  edgeWallPower: 0.5
+  edgeMinCavityHeight: 0.2
+  useRooms: 1
+  minRoomsPerLayer: 5
+  maxRoomsPerLayer: 5
+  roomMinRadius: 30
+  roomMaxRadius: 50
+  roomRingWidthMin: 30
+  roomRingWidthMax: 40
+  roomWallRaiseMin: 30
+  roomWallRaiseMax: 40
+  roomEntranceAngleMin: 20
+  roomEntranceAngleMax: 30
+  roomRadiusNoiseScaleMin: 1.5
+  roomRadiusNoiseScaleMax: 3.5
+  roomRadiusNoiseStrengthMin: 0.2
+  roomRadiusNoiseStrengthMax: 0.45
+  roomInteriorNoiseScaleMin: 0.08
+  roomInteriorNoiseScaleMax: 0.16
+  roomInteriorNoiseStrengthMin: 1
+  roomInteriorNoiseStrengthMax: 2.5
+  roomInteriorInnerFalloff: 0.4
+  roomWallDisplaceScale: 0.37
+  roomWallDisplaceAmount: 2
+  baseThickness: 40
+  thicknessNoiseAmount: 2
+  thicknessNoiseScale: 0.03
+  caveLevels: 3
+  caveLevelSpacing: 80
+  entranceOffsetY: 1.5
+  caveMaterial: {fileID: 2100000, guid: 57f4c940f33d2814c97957533cfcc2e7, type: 2}

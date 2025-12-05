@@ -109,6 +109,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: fdf0edeb657ce454fbb561541962d538, type: 3}
       insertIndex: -1
       addedObject: {fileID: 7393679011893825682}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: fdf0edeb657ce454fbb561541962d538, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 9076314525882311604}
   m_SourcePrefab: {fileID: 100100000, guid: fdf0edeb657ce454fbb561541962d538, type: 3}
 --- !u!4 &455705041495517847 stripped
 Transform:
@@ -135,7 +138,7 @@ BoxCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
@@ -183,3 +186,24 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 2.461978
   m_Center: {x: 1, y: 0, z: 3.1344132}
+--- !u!114 &9076314525882311604
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 943836168976445485}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38e137ea8ba0c814db02d7380be9fe34, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  interactKey: 101
+  holdDuration: 1.5
+  playerOverride: {fileID: 8186424562861070311, guid: c0e89e3c1fc970249b71ba242273ee3a, type: 3}
+  useTargetTransform: 0
+  targetTransform: {fileID: 7308194531455898889, guid: 5bc094846ce9d384daa9c2457a7d85bf, type: 3}
+  targetPosition: {x: 0, y: 0, z: 0}
+  targetYOffset: 1
+  alignPlayerRotation: 0
+  lookDirection: {fileID: 0}

@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c58329acfc69004b992d042e93b63ef, type: 3}
+  m_Name: Test
+  m_EditorClassIdentifier: 
+  mapWidth: 256
+  mapLength: 256
+  tileSize: 2
+  baseHeight: 0
+  heightScale: 40
+  noiseScale: 0.02
+  noiseOctaves: 3
+  noiseLacunarity: 2
+  noisePersistence: 0.45
+  landingRadius: 30
+  landingFalloff: 0
+  useLandingCorridor: 1
+  corridorHalfWidth: 8
+  corridorLength: 30
+  corridorMaxHeightOffset: 0
+  groundTilePrefab: {fileID: 0}
+  groundMaterialOverride: {fileID: 2100000, guid: 57f4c940f33d2814c97957533cfcc2e7, type: 2}
+  terrainModule: {fileID: 11400000, guid: ad55ef2d60666c84e9eafcac461f61d6, type: 2}
+  caveModule: {fileID: 11400000, guid: 2f00076bfe548864ea5049ff37c52dd5, type: 2}
+  surfaceEntrancePrefab: {fileID: 8908272188801702316, guid: 9ed448de0d6d4bd41a202e64165c5baf, type: 3}
+  caveEntrancePrefab: {fileID: 4349780629983635604, guid: 5bc094846ce9d384daa9c2457a7d85bf, type: 3}
+  surfaceEntranceYOffset: 0.2
+  caveEntranceYOffset: 0.2
+  surfaceEntranceMinDistanceFromLanding: 100
+  surfaceEntranceMaxDistanceFromLanding: 110
+  surfaceEntrancePlacementAttempts: 10
+  structures: []
+  monsters: []
+  items: []

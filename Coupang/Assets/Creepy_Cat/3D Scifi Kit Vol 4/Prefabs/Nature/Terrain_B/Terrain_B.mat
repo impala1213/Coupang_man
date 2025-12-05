@@ -14,7 +14,7 @@ Material:
   m_ValidKeywords:
   - _DETAIL_MULX2
   - _EMISSION
-  - _METALLICSPECGLOSSMAP
+  - _ENVIRONMENTREFLECTIONS_OFF
   - _NORMALMAP
   - _OCCLUSIONMAP
   m_InvalidKeywords:
@@ -65,7 +65,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MainTex:
-        m_Texture: {fileID: 0}
+        m_Texture: {fileID: 2800000, guid: 175ea91557dfc1d41b8317330e5beb2c, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MetallicGlossMap:
@@ -139,7 +139,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.6509434, g: 0.4790674, b: 0.39609286, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.6509434, g: 0.4790674, b: 0.39609283, a: 1}
     - _EmissionColor: {r: 3.6886053, g: 0.8111069, b: 0, a: 0}
     - _SpecColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   m_BuildTextureStacks: []
