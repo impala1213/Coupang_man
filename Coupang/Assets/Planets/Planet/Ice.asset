@@ -12,24 +12,59 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6c58329acfc69004b992d042e93b63ef, type: 3}
   m_Name: Ice
   m_EditorClassIdentifier: 
-  mapWidth: 128
-  mapLength: 128
-  tileSize: 5
-  baseHeight: 0
+  planetName: Unnamed Planet
+  biomeName: Default Biome
+  seedOffset: 0
+  mapWidth: 256
+  mapLength: 256
+  tileSize: 3
+  baseHeight: -2
   heightScale: 80
   noiseScale: 0.002
   noiseOctaves: 3
   noiseLacunarity: 2
   noisePersistence: 1
   landingRadius: 40
-  landingFalloff: 20
+  landingFalloff: 40
   useLandingCorridor: 1
   corridorHalfWidth: 8
   corridorLength: 30
   corridorMaxHeightOffset: 0
-  groundTilePrefab: {fileID: 0}
   groundMaterialOverride: {fileID: 2100000, guid: b994866080c881748925fabd860368a3, type: 2}
-  terrainModule: {fileID: 11400000, guid: a878468eca42eb9409058fc4502093e5, type: 2}
+  terrainHeightGradient:
+    serializedVersion: 2
+    key0: {r: 1, g: 1, b: 1, a: 1}
+    key1: {r: 1, g: 1, b: 1, a: 1}
+    key2: {r: 0, g: 0, b: 0, a: 0}
+    key3: {r: 0, g: 0, b: 0, a: 0}
+    key4: {r: 0, g: 0, b: 0, a: 0}
+    key5: {r: 0, g: 0, b: 0, a: 0}
+    key6: {r: 0, g: 0, b: 0, a: 0}
+    key7: {r: 0, g: 0, b: 0, a: 0}
+    ctime0: 0
+    ctime1: 65535
+    ctime2: 0
+    ctime3: 0
+    ctime4: 0
+    ctime5: 0
+    ctime6: 0
+    ctime7: 0
+    atime0: 0
+    atime1: 65535
+    atime2: 0
+    atime3: 0
+    atime4: 0
+    atime5: 0
+    atime6: 0
+    atime7: 0
+    m_Mode: 0
+    m_ColorSpace: -1
+    m_NumColorKeys: 2
+    m_NumAlphaKeys: 2
+  skyColor: {r: 0.4, g: 0.7, b: 1, a: 1}
+  fogColor: {r: 0.5, g: 0.6, b: 0.7, a: 1}
+  ambientColor: {r: 1, g: 1, b: 1, a: 1}
+  terrainModule: {fileID: 11400000, guid: 63b388a4f76b8d649bf567d3a4743189, type: 2}
   structures:
   - prefab: {fileID: 919132149155446097, guid: f1e8e1bfafe7fa241ba6b4181f3eba85, type: 3}
     minCount: 10
@@ -38,6 +73,7 @@ MonoBehaviour:
     maxHeight: 60
     maxSlope: 60
     avoidLandingZone: 1
+    landingSafeMargin: 2
     extraYOffset: 0
     alignToTerrainNormal: 0
   monsters:

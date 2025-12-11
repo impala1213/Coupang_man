@@ -320,7 +320,13 @@ MonoBehaviour:
   terrainParent: {fileID: 1444500474}
   planetContainerAnchor: {fileID: 0}
   mapRunner: {fileID: 1444500476}
-  landingHeightOffset: -6.7
+  containerCollider: {fileID: 0}
+  raycastAboveOffset: 0
+  raycastDistance: 800
+  groundLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  alignAnchorToGroundNormal: 1
 --- !u!114 &1444500476
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -334,22 +340,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   terrainParent: {fileID: 67993025}
-  defaultTerrainModule: {fileID: 11400000, guid: a878468eca42eb9409058fc4502093e5, type: 2}
-  defaultCaveModule: {fileID: 0}
+  defaultTerrainModule: {fileID: 11400000, guid: 63b388a4f76b8d649bf567d3a4743189, type: 2}
   overrideProfile: 0
   profileOverride: {fileID: 0}
-  generateCaves: 1
-  generateRockCorridors: 1
-  rockSegmentPrefabs:
-  - {fileID: 3551670859461603615, guid: 3c508c2880c63e7498d19875f5b42205, type: 3}
-  corridorRingSpacing: 1
-  tubeInnerRadius: 8
-  tubeRingSegmentCount: 8
-  corridorLateralNoise: 1
-  corridorVerticalNoise: 0.5
-  corridorMaxSlopeDegrees: 35
-  carveTerrainAroundTube: 1
-  carveRadiusPadding: 0.5
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
