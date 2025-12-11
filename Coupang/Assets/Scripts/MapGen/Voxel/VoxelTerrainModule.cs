@@ -125,12 +125,11 @@ public class VoxelTerrainModule : TerrainModule
     public int roomShapeNoiseOctaves = 2;
 
     // ─────────────────────────────────────
-    // Entrances (caves ↔ surface)
+    // Entrances (caves ↔ surface) – ONLY FROM CORRIDORS
     // ─────────────────────────────────────
-    [Header("Wall Entrances (Caves to Surface)")]
+    [Header("Wall Entrances (Corridors → Surface)")]
     [Tooltip("Minimum number of cave entrances that connect caves to the surface.\n" +
-             "Entrances start on cave walls, not ceilings.\n" +
-             "※ Only between-room corridors will be used (not rooms themselves).")]
+             "Entrances start on corridor walls, not ceilings or rooms.")]
     public int minSurfaceEntrances = 2;
 
     [Tooltip("Radius of entrance tunnel (in voxels).")]
@@ -162,6 +161,13 @@ public class VoxelTerrainModule : TerrainModule
 
     [Tooltip("2D noise scale used to vary shell thickness along the border.")]
     public float boundaryNoiseScale = 0.25f;
+
+    // ─────────────────────────────────────
+    // Debug
+    // ─────────────────────────────────────
+    [Header("Debug")]
+    [Tooltip("If true, logs a short summary of floor/wall/ceiling counts after surface data is built.")]
+    public bool debugLogSurfaceSummary = false;
 
     // ─────────────────────────────────────
     // Helper struct for wall entrance candidates
@@ -303,7 +309,9 @@ public class VoxelTerrainModule : TerrainModule
         // Chunk bottom at slab bottom
         float worldBottomY = slabBottomY;
 
+        // ─────────────────────────────────────
         // Create chunk GameObject
+        // ─────────────────────────────────────
         GameObject chunkGO = new GameObject("VoxelChunk_Main");
         chunkGO.transform.SetParent(parent, false);
         chunkGO.transform.localPosition = new Vector3(-halfWidth, worldBottomY, -halfLength);
@@ -315,19 +323,13 @@ public class VoxelTerrainModule : TerrainModule
         GetTerrainMaterials(profile, out Material groundMat, out Material undergroundMat, out Material caveMat);
         chunk.Initialize(width, verticalVoxels, length, groundMat, undergroundMat, caveMat);
 
-        // Masks for path cave classification
-        // corridorMask = main tunnels
-        // roomMask     = larger chambers
-        bool[,,] corridorMask = null;
-        bool[,,] roomMask = null;
+        // Masks for room/corridor classification
+        bool[,,] roomMask = new bool[width, verticalVoxels, length];
+        bool[,,] corridorMask = new bool[width, verticalVoxels, length];
 
-        if (enablePathCaves)
-        {
-            corridorMask = new bool[width, verticalVoxels, length];
-            roomMask = new bool[width, verticalVoxels, length];
-        }
-
+        // ─────────────────────────────────────
         // Fill voxels (slab + surface)
+        // ─────────────────────────────────────
         for (int z = 0; z < length; z++)
         {
             for (int x = 0; x < width; x++)
@@ -406,6 +408,7 @@ public class VoxelTerrainModule : TerrainModule
 
         // ─────────────────────────────────────
         // Path-based caves: long tunnels + rooms
+        //  - also fills roomMask / corridorMask
         // ─────────────────────────────────────
         if (enablePathCaves)
         {
@@ -413,8 +416,6 @@ public class VoxelTerrainModule : TerrainModule
 
             CarvePathCaves(
                 chunk.voxels,
-                corridorMask,
-                roomMask,
                 width,
                 verticalVoxels,
                 length,
@@ -423,7 +424,9 @@ public class VoxelTerrainModule : TerrainModule
                 slabBottomY,
                 slabTopY,
                 worldBottomY,
-                caveSafeMaxY  // caves cannot go above this (buffer under surface)
+                caveSafeMaxY,   // maximum world Y caves can carve up to
+                corridorMask,
+                roomMask
             );
         }
 
@@ -459,16 +462,15 @@ public class VoxelTerrainModule : TerrainModule
         );
 
         // ─────────────────────────────────────
-        // Create entrances only from corridor walls (not rooms) to surface
+        // Create entrances from CORRIDOR walls to surface
+        // (방이 아닌 통로에서만 입구 생성)
         // ─────────────────────────────────────
-        if (minSurfaceEntrances > 0 && enablePathCaves && corridorMask != null && roomMask != null)
+        if (minSurfaceEntrances > 0)
         {
             Rng entranceRng = rng.Split(424242);
 
             CreateWallEntrances(
                 chunk.voxels,
-                corridorMask,
-                roomMask,
                 width,
                 verticalVoxels,
                 length,
@@ -478,14 +480,47 @@ public class VoxelTerrainModule : TerrainModule
                 maxSurfaceHeight,
                 caveSafeMaxY,
                 entranceRng,
-                minSurfaceEntrances
+                minSurfaceEntrances,
+                roomMask,
+                corridorMask
             );
         }
 
         // ─────────────────────────────────────
-        // Build final mesh
+        // Build final mesh (Marching Cubes + smoothing/jitter는 VoxelChunk가 처리)
         // ─────────────────────────────────────
         chunk.BuildMesh(voxelSize);
+
+        // ─────────────────────────────────────
+        // Build surface classification (floor / wall / ceiling + region flags)
+        //   - roomMask / corridorMask를 넘겨서 내부 방/통로 구분
+        // ─────────────────────────────────────
+        VoxelSurfaceData surfaceData = VoxelSurfaceBuilder.BuildSurfaceData(
+            chunkGO,
+            chunk.voxels,
+            voxelSize,
+            worldBottomY,
+            roomMask,
+            corridorMask,
+            maxWorldY: null   // null → 전체 높이 다 분석
+        );
+
+        if (debugLogSurfaceSummary && surfaceData != null)
+        {
+            LogSurfaceSummary(surfaceData);
+        }
+
+        // ─────────────────────────────────────
+        // Spawn structures / monsters / items based on MapProfile rules
+        //   (조건은 MapProfile의 VoxelSpawnEntry + VoxelSpawnUtility가 처리)
+        // ─────────────────────────────────────
+        VoxelSpawnUtility.SpawnFromProfile(
+            profile,
+            rng.Split(7777),
+            parent,     // terrainParent
+            chunk,
+            surfaceData
+        );
     }
 
     // ─────────────────────────────────────
@@ -561,8 +596,6 @@ public class VoxelTerrainModule : TerrainModule
     // ─────────────────────────────────────
     private void CarvePathCaves(
         VoxelType[,,] voxels,
-        bool[,,] corridorMask,
-        bool[,,] roomMask,
         int sizeX,
         int sizeY,
         int sizeZ,
@@ -571,12 +604,11 @@ public class VoxelTerrainModule : TerrainModule
         float slabBottomY,
         float slabTopY,
         float worldBottomY,
-        float maxCarveWorldY)
+        float maxCarveWorldY,
+        bool[,,] corridorMask,
+        bool[,,] roomMask)
     {
         if (sizeX <= 1 || sizeY <= 1 || sizeZ <= 1)
-            return;
-
-        if (corridorMask == null || roomMask == null)
             return;
 
         int totalPaths = Mathf.Max(0, pathCaveCount);
@@ -621,8 +653,6 @@ public class VoxelTerrainModule : TerrainModule
             Rng pathRng = rng.Split(1000 + p);
             CarveSinglePath(
                 voxels,
-                corridorMask,
-                roomMask,
                 sizeX,
                 sizeY,
                 sizeZ,
@@ -640,15 +670,15 @@ public class VoxelTerrainModule : TerrainModule
                 roomRadiusRand,
                 worldBottomY,
                 voxelSize,
-                maxCarveWorldY
+                maxCarveWorldY,
+                corridorMask,
+                roomMask
             );
         }
     }
 
     private void CarveSinglePath(
         VoxelType[,,] voxels,
-        bool[,,] corridorMask,
-        bool[,,] roomMask,
         int sizeX,
         int sizeY,
         int sizeZ,
@@ -666,7 +696,9 @@ public class VoxelTerrainModule : TerrainModule
         float roomRadiusRand,
         float worldBottomY,
         float voxelSize,
-        float maxCarveWorldY)
+        float maxCarveWorldY,
+        bool[,,] corridorMask,
+        bool[,,] roomMask)
     {
         Vector3 pos = startPos;
 
@@ -684,8 +716,6 @@ public class VoxelTerrainModule : TerrainModule
             // Main tunnel (corridor)
             CarveSphere(
                 voxels,
-                corridorMask,
-                roomMask,
                 sizeX,
                 sizeY,
                 sizeZ,
@@ -694,10 +724,14 @@ public class VoxelTerrainModule : TerrainModule
                 worldBottomY,
                 voxelSize,
                 true,
-                maxCarveWorldY
+                maxCarveWorldY,
+                corridorMask,
+                roomMask,
+                markAsCorridor: true,
+                markAsRoom: false
             );
 
-            // Occasionally create a bigger room
+            // Occasionally create a bigger, lumpy room
             if (rng.NextFloat() < roomChance)
             {
                 float mulFactor = 1f + rng.NextFloat(-roomRadiusRand, roomRadiusRand);
@@ -707,8 +741,6 @@ public class VoxelTerrainModule : TerrainModule
                 Rng roomRng = rng.Split(step + 1);
                 CarveIrregularRoom(
                     voxels,
-                    corridorMask,
-                    roomMask,
                     sizeX,
                     sizeY,
                     sizeZ,
@@ -717,7 +749,11 @@ public class VoxelTerrainModule : TerrainModule
                     roomRng,
                     worldBottomY,
                     voxelSize,
-                    maxCarveWorldY
+                    maxCarveWorldY,
+                    corridorMask,
+                    roomMask,
+                    markAsCorridor: false,
+                    markAsRoom: true
                 );
             }
 
@@ -791,12 +827,10 @@ public class VoxelTerrainModule : TerrainModule
     }
 
     // ─────────────────────────────────────
-    // Basic sphere carving (for path tunnels)
+    // Basic sphere carving (corridor / room 마스크 표시 포함)
     // ─────────────────────────────────────
     private void CarveSphere(
         VoxelType[,,] voxels,
-        bool[,,] corridorMask,
-        bool[,,] roomMask,
         int sizeX,
         int sizeY,
         int sizeZ,
@@ -805,7 +839,11 @@ public class VoxelTerrainModule : TerrainModule
         float worldBottomY,
         float voxelSize,
         bool clampToMaxWorldY,
-        float maxWorldY)
+        float maxWorldY,
+        bool[,,] corridorMask,
+        bool[,,] roomMask,
+        bool markAsCorridor,
+        bool markAsRoom)
     {
         float r2 = radius * radius;
 
@@ -844,11 +882,11 @@ public class VoxelTerrainModule : TerrainModule
                     {
                         voxels[x, y, z] = VoxelType.Air;
 
-                        // Mark as corridor unless later overridden by a room
-                        if (corridorMask != null)
+                        if (markAsCorridor && corridorMask != null)
                             corridorMask[x, y, z] = true;
 
-                        // Do not touch roomMask here
+                        if (markAsRoom && roomMask != null)
+                            roomMask[x, y, z] = true;
                     }
                 }
             }
@@ -856,8 +894,7 @@ public class VoxelTerrainModule : TerrainModule
     }
 
     /// <summary>
-    /// Sphere carving with optional min/max world-Y clamps.
-    /// (Used for entrance tunnels; does not mark corridor/room masks.)
+    /// Sphere carving with optional min/max world-Y clamps (entrance 전용, 마스크 X).
     /// </summary>
     private void CarveSphereWithVerticalClamp(
         VoxelType[,,] voxels,
@@ -915,12 +952,10 @@ public class VoxelTerrainModule : TerrainModule
     }
 
     // ─────────────────────────────────────
-    // Irregular room carving (lumpy sphere) for path caves
+    // Irregular room carving (lumpy sphere)
     // ─────────────────────────────────────
     private void CarveIrregularRoom(
         VoxelType[,,] voxels,
-        bool[,,] corridorMask,
-        bool[,,] roomMask,
         int sizeX,
         int sizeY,
         int sizeZ,
@@ -929,7 +964,11 @@ public class VoxelTerrainModule : TerrainModule
         Rng rng,
         float worldBottomY,
         float voxelSize,
-        float maxWorldY)
+        float maxWorldY,
+        bool[,,] corridorMask,
+        bool[,,] roomMask,
+        bool markAsCorridor,
+        bool markAsRoom)
     {
         float shapeAmp = Mathf.Clamp01(roomShapeNoiseAmplitude);
         float searchRadius = baseRadius * (1f + shapeAmp);
@@ -986,12 +1025,11 @@ public class VoxelTerrainModule : TerrainModule
                     {
                         voxels[x, y, z] = VoxelType.Air;
 
-                        // Mark this region as room and clear corridor flag
-                        if (roomMask != null)
-                            roomMask[x, y, z] = true;
+                        if (markAsCorridor && corridorMask != null)
+                            corridorMask[x, y, z] = true;
 
-                        if (corridorMask != null)
-                            corridorMask[x, y, z] = false;
+                        if (markAsRoom && roomMask != null)
+                            roomMask[x, y, z] = true;
                     }
                 }
             }
@@ -1104,12 +1142,10 @@ public class VoxelTerrainModule : TerrainModule
     }
 
     // ─────────────────────────────────────
-    // Create entrances (cave walls → surface) - only near corridors, not rooms
+    // Create entrances (corridor walls → surface)
     // ─────────────────────────────────────
     private void CreateWallEntrances(
         VoxelType[,,] voxels,
-        bool[,,] corridorMask,
-        bool[,,] roomMask,
         int sizeX,
         int sizeY,
         int sizeZ,
@@ -1119,11 +1155,11 @@ public class VoxelTerrainModule : TerrainModule
         float maxSurfaceY,
         float maxCaveWorldY,
         Rng rng,
-        int desiredEntrances)
+        int desiredEntrances,
+        bool[,,] roomMask,
+        bool[,,] corridorMask)
     {
         if (desiredEntrances <= 0)
-            return;
-        if (corridorMask == null || roomMask == null)
             return;
 
         List<WallCandidate> candidates = new List<WallCandidate>();
@@ -1134,11 +1170,9 @@ public class VoxelTerrainModule : TerrainModule
         // Find wall candidates where:
         //  - current cell is Air
         //  - below is solid (floor)
-        //  - above is Air (headroom)
-        //  - one side is solid (wall), opposite side is Air (cave interior)
-        //  - the cave interior cell is:
-        //        corridorMask == true AND roomMask == false
-        //    → only corridors, not rooms
+        //  - above is Air (headroom; NOT ceiling immediately)
+        //  - one horizontal side is solid (wall), opposite side is Air (cave interior)
+        //  - corridorMask = true, roomMask = false
         for (int z = 2; z < sizeZ - 2; z++)
         {
             for (int x = 2; x < sizeX - 2; x++)
@@ -1148,23 +1182,24 @@ public class VoxelTerrainModule : TerrainModule
                     if (voxels[x, y, z] != VoxelType.Air)
                         continue;
 
-                    float worldY = worldBottomY + (y + 0.5f) * voxelSize;
-                    if (worldY < minWorldYForAnchor || worldY > maxWorldYForAnchor)
+                    // region filter: only corridor, not room
+                    if (corridorMask != null && !corridorMask[x, y, z])
+                        continue;
+                    if (roomMask != null && roomMask[x, y, z])
                         continue;
 
-                    // Depth to surface: too shallow → would look like a short vertical shaft
-                    float surfaceHere = heightMap[x, z];
-                    float depthToSurface = surfaceHere - worldY;
-                    float minDepthWorld = Mathf.Max(entranceRadius * 2.5f * voxelSize, 2f * voxelSize);
-                    if (depthToSurface < minDepthWorld)
+                    float worldY = worldBottomY + (y + 0.5f) * voxelSize;
+                    if (worldY < minWorldYForAnchor || worldY > maxWorldYForAnchor)
                         continue;
 
                     // Floor: below must be solid
                     if (voxels[x, y - 1, z] == VoxelType.Air)
                         continue;
 
-                    // Headroom: above must be Air (exclude ceiling-tight spaces)
+                    // 위로 최소 2칸 정도는 Air → 천장 바로 아래 포켓은 제외
                     if (voxels[x, y + 1, z] != VoxelType.Air)
+                        continue;
+                    if (voxels[x, y + 2, z] != VoxelType.Air)
                         continue;
 
                     Vector3Int[] dirs =
@@ -1188,17 +1223,9 @@ public class VoxelTerrainModule : TerrainModule
                         if (neighbor == VoxelType.Air)
                             continue;
 
-                        // Opposite side: cave interior (Air) that MUST be corridor, not room
-                        int ixInterior = x - d.x;
-                        int izInterior = z - d.z;
-                        VoxelType opp = voxels[ixInterior, y, izInterior];
+                        // Opposite side should be Air (cave interior)
+                        VoxelType opp = voxels[x - d.x, y, z - d.z];
                         if (opp != VoxelType.Air)
-                            continue;
-
-                        if (!corridorMask[ixInterior, y, izInterior])
-                            continue;
-
-                        if (roomMask[ixInterior, y, izInterior])
                             continue;
 
                         bestDir = d;
@@ -1253,9 +1280,10 @@ public class VoxelTerrainModule : TerrainModule
     }
 
     /// <summary>
-    /// Carves a diagonal ramp (~entranceSlopeDegrees) from a cave wall up toward the surface.
-    /// Entrances are now only created from corridor walls (not room walls).
-    /// No stair logic here; player climbability is handled by slope & voxel size.
+    /// Carves a diagonal ramp (~entranceSlopeDegrees) from a corridor wall up toward the surface.
+    /// Starts at a wall candidate with floor+headroom, and clamps vertical carving so it
+    /// does not destroy the slab top safety zone more than needed.
+    /// (계단 로직 없음, 램프만 생성)
     /// </summary>
     private bool CarveEntranceFromWall(
         VoxelType[,,] voxels,
@@ -1328,15 +1356,11 @@ public class VoxelTerrainModule : TerrainModule
 
             Vector3 carveCenter = pos;
 
-            // Jitter: stronger deeper down, slightly reduced near the surface
-            float heightT = Mathf.InverseLerp(startWorldY, surfaceY, worldYCenter);
-            float currentJitterAmp = Mathf.Lerp(jitterAmp, jitterAmp * 0.6f, Mathf.Clamp01(heightT));
-
-            if (currentJitterAmp > 0f)
+            if (jitterAmp > 0f)
             {
                 float j1 = rng.NextFloat(-1f, 1f);
                 float j2 = rng.NextFloat(-1f, 1f);
-                Vector3 jitter = (side1 * j1 + side2 * j2) * currentJitterAmp;
+                Vector3 jitter = (side1 * j1 + side2 * j2) * jitterAmp;
                 carveCenter += jitter;
             }
 
@@ -1358,9 +1382,7 @@ public class VoxelTerrainModule : TerrainModule
             // If we reached near the surface, finalize
             if (worldYCenter >= surfaceY - voxelSize * 0.5f)
             {
-                // Extra shaping near the mouth; clamp to just above the surface
-                float mouthMaxWorldY = surfaceY + 0.25f * voxelSize;
-
+                // A few extra steps to open the mouth more
                 for (int extra = 0; extra < 3; extra++)
                 {
                     pos += dir * stepLen;
@@ -1368,15 +1390,11 @@ public class VoxelTerrainModule : TerrainModule
 
                     carveCenter = pos;
 
-                    // Decrease jitter near the entrance opening
-                    float tExtra = (extra + 1) / 3f;
-                    float extraJitter = Mathf.Lerp(currentJitterAmp, currentJitterAmp * 0.3f, tExtra);
-
-                    if (extraJitter > 0f)
+                    if (jitterAmp > 0f)
                     {
                         float j1 = rng.NextFloat(-1f, 1f);
                         float j2 = rng.NextFloat(-1f, 1f);
-                        Vector3 jitter = (side1 * j1 + side2 * j2) * extraJitter;
+                        Vector3 jitter = (side1 * j1 + side2 * j2) * jitterAmp;
                         carveCenter += jitter;
                     }
 
@@ -1391,8 +1409,8 @@ public class VoxelTerrainModule : TerrainModule
                         voxelSize,
                         true,
                         minWorldY,
-                        true,
-                        mouthMaxWorldY
+                        false,
+                        0f
                     );
                 }
 
@@ -1418,5 +1436,43 @@ public class VoxelTerrainModule : TerrainModule
         }
 
         return false;
+    }
+
+    // ─────────────────────────────────────
+    // Debug: surface summary
+    // ─────────────────────────────────────
+    private void LogSurfaceSummary(VoxelSurfaceData data)
+    {
+        if (data == null || data.flags == null)
+            return;
+
+        var flags = data.flags;
+        int sizeX = data.sizeX;
+        int sizeY = data.sizeY;
+        int sizeZ = data.sizeZ;
+
+        int floorCount = 0;
+        int wallCount = 0;
+        int ceilingCount = 0;
+
+        for (int z = 0; z < sizeZ; z++)
+        {
+            for (int x = 0; x < sizeX; x++)
+            {
+                for (int y = 1; y < sizeY - 1; y++)
+                {
+                    VoxelSurfaceFlags f = flags[x, y, z];
+                    if (f == VoxelSurfaceFlags.None)
+                        continue;
+
+                    if ((f & VoxelSurfaceFlags.Floor) != 0) floorCount++;
+                    if ((f & VoxelSurfaceFlags.Wall) != 0) wallCount++;
+                    if ((f & VoxelSurfaceFlags.Ceiling) != 0) ceilingCount++;
+                }
+            }
+        }
+
+        Debug.Log($"[VoxelTerrainModule] Surface summary on '{data.gameObject.name}': " +
+                  $"Floors={floorCount}, Walls={wallCount}, Ceilings={ceilingCount}");
     }
 }

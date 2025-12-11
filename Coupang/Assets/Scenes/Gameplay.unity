@@ -282,6 +282,7 @@ GameObject:
   - component: {fileID: 1444500474}
   - component: {fileID: 1444500476}
   - component: {fileID: 1444500475}
+  - component: {fileID: 1444500477}
   m_Layer: 0
   m_Name: WorldRoot
   m_TagString: Untagged
@@ -343,6 +344,27 @@ MonoBehaviour:
   defaultTerrainModule: {fileID: 11400000, guid: 63b388a4f76b8d649bf567d3a4743189, type: 2}
   overrideProfile: 0
   profileOverride: {fileID: 0}
+--- !u!114 &1444500477
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1444500473}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2ce7148928b3f1d43ab7103aed04e3ac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  root: {fileID: 1444500474}
+  debugStride: 2
+  gizmoSize: 0.5
+  showFloors: 1
+  showWalls: 1
+  showCeilings: 1
+  floorColor: {r: 0.2, g: 1, b: 0.2, a: 0.9}
+  wallColor: {r: 1, g: 0.5, b: 0.2, a: 0.9}
+  ceilingColor: {r: 0.2, g: 0.5, b: 1, a: 0.9}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

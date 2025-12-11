@@ -1,247 +1,188 @@
-using System;
 using UnityEngine;
 
-[CreateAssetMenu(menuName = "Map/Planet Profile")]
+[CreateAssetMenu(menuName = "Map/Map Profile")]
 public class MapProfile : ScriptableObject
 {
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    // Planet / Biome meta
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    [Header("Planet Info")]
-    [Tooltip("Display name of this planet/biome.")]
-    public string planetName = "Unnamed Planet";
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // Basic grid / terrain noise
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
 
-    [Tooltip("Name of the biome. One biome per planet in this design.")]
-    public string biomeName = "Default Biome";
-
-    [Tooltip("Optional per-planet seed offset. Will be XORed with the base seed in MapRunner.")]
-    public int seedOffset = 0;
-
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    // Grid / voxel layout
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    [Header("Grid / Voxel Layout")]
-    [Tooltip("Number of tiles/voxels along the X axis.")]
+    [Header("Grid")]
+    [Tooltip("Number of voxels along X (world width in X).")]
     public int mapWidth = 64;
 
-    [Tooltip("Number of tiles/voxels along the Z axis.")]
+    [Tooltip("Number of voxels along Z (world length in Z).")]
     public int mapLength = 64;
 
-    [Tooltip("World size of one tile/voxel edge in meters.")]
+    [Tooltip("World size of one voxel edge. Used by voxel terrain module.")]
     public float tileSize = 2f;
 
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    // Height noise (used by terrain modules)
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
     [Header("Height Noise")]
-    [Tooltip("Base height of the terrain in world units.")]
+    [Tooltip("Base world height for the terrain surface before noise is applied.")]
     public float baseHeight = 0f;
 
-    [Tooltip("Maximum vertical variation produced by noise.")]
-    public float heightScale = 16f;
+    [Tooltip("Vertical scale of the surface noise.")]
+    public float heightScale = 8f;
 
-    [Tooltip("Base frequency for Perlin noise sampling.")]
+    [Tooltip("Base frequency for 2D surface noise.")]
     public float noiseScale = 0.02f;
 
-    [Tooltip("Number of octaves for fractal noise.")]
+    [Tooltip("Number of octaves for surface noise.")]
     public int noiseOctaves = 4;
 
-    [Tooltip("Frequency multiplier per octave.")]
+    [Tooltip("Frequency multiplier per octave for surface noise.")]
     public float noiseLacunarity = 2f;
 
-    [Tooltip("Amplitude multiplier per octave (0-1).")]
-    [Range(0f, 1f)]
+    [Tooltip("Amplitude multiplier per octave for surface noise.")]
     public float noisePersistence = 0.45f;
 
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    // Landing zone (one biome per planet檜雖虜,
-    // ч撩 醞褕縑 雜睛/衛濛 掘羲擎 в蹂)
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // Landing area (used by VoxelTerrainModule + LandingHelper)
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+
     [Header("Landing Area")]
-    [Tooltip("Radius around the planet center that should be relatively flat.")]
+    [Tooltip("Radius around the world origin that is flattened for landing.")]
     public float landingRadius = 10f;
 
-    [Tooltip("Blend width between flat landing area and normal noise terrain.")]
+    [Tooltip("Blend width between the flat landing area and normal noisy terrain.")]
     public float landingFalloff = 6f;
 
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    // (Optional) Landing corridor - ⑷營 voxel 賅菊縑憮朝 嬴霜 嘐餌辨.
-    // MeshTerrainModule / NoiseTerrainModule陛 в蹂ж賊 餌辨 陛棟.
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    [Header("Landing Corridor (optional, currently not used by VoxelTerrainModule)")]
-    [Tooltip("Enable corridor shaping for modules that support it.")]
-    public bool useLandingCorridor = true;
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // Visuals
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
 
-    [Tooltip("Half width of the landing corridor.")]
-    public float corridorHalfWidth = 4f;
-
-    [Tooltip("Length of the landing corridor starting from landing radius.")]
-    public float corridorLength = 30f;
-
-    [Tooltip("Maximum height offset allowed inside corridor.")]
-    public float corridorMaxHeightOffset = 4f;
-
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    // Visual / palette
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    [Header("Visual / Palette")]
-    [Tooltip("Optional material that overrides the default terrain material.")]
+    [Header("Visual")]
+    [Tooltip("Optional override material for ground/cave rendering. " +
+             "If null, VoxelTerrainModule will use its own default materials.")]
     public Material groundMaterialOverride;
 
-    [Tooltip("Optional gradient that represents terrain color over height (min -> max). Can be used in shaders.")]
-    public Gradient terrainHeightGradient;
-
-    [Tooltip("Sky color for this planet. Used by visual controllers, not by terrain itself.")]
-    public Color skyColor = new Color(0.4f, 0.7f, 1f);
-
-    [Tooltip("Fog color for this planet.")]
-    public Color fogColor = new Color(0.5f, 0.6f, 0.7f);
-
-    [Tooltip("Ambient light color for this planet.")]
-    public Color ambientColor = Color.white;
-
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
     // Terrain logic
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+
     [Header("Terrain Logic")]
-    [Tooltip("Terrain module used to generate this planet. For voxel planets, assign a VoxelTerrainModule.")]
+    [Tooltip("Terrain generator ScriptableObject. " +
+             "Assign VoxelTerrainModule here for voxel-based planets.")]
     public TerrainModule terrainModule;
 
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
-    // Structures / Creatures / Items
-    // ⑷營 VoxelTerrainModule縑憮朝 餌辨ж雖 彊雖虜,
-    // щ�� voxel ル賊 蝶ア 衛蝶蠱縑憮 斜渠煎 營餌辨й 蕨薑.
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // Voxel spawn rules (structures / monsters / items)
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
 
-    [Serializable]
-    public class StructureEntry
+    /// <summary>
+    /// Common spawn filter for voxel-based objects.
+    /// Controls: surface type (floor/wall/ceiling), region type (room/corridor/cave/exterior),
+    /// world height limits, distance from planet center, and landing zone avoidance.
+    /// </summary>
+    [System.Serializable]
+    public class VoxelSpawnFilter
     {
-        [Header("Prefab & Count")]
-        [Tooltip("Structure prefab to spawn on the terrain (rocks, trees, buildings, etc.).")]
-        public GameObject prefab;
+        [Header("Surface Type")]
+        [Tooltip("Allow spawning on floor cells (Air above solid).")]
+        public bool allowOnFloor = true;
 
-        [Tooltip("Minimum number of instances to spawn for this structure type.")]
-        public int minCount = 0;
+        [Tooltip("Allow spawning on wall cells (Air next to solid side).")]
+        public bool allowOnWall = false;
 
-        [Tooltip("Maximum number of instances to spawn for this structure type.")]
-        public int maxCount = 10;
+        [Tooltip("Allow spawning on ceiling cells (Air below solid).")]
+        public bool allowOnCeiling = false;
 
-        [Header("Height & Slope Conditions")]
-        [Tooltip("Minimum world height where this structure can appear.")]
-        public float minHeight = -999f;
+        [Header("Region Type (from VoxelSurfaceFlags)")]
+        [Tooltip("Allow cells that belong to rooms.")]
+        public bool allowInRooms = true;
 
-        [Tooltip("Maximum world height where this structure can appear.")]
-        public float maxHeight = 999f;
+        [Tooltip("Allow cells that belong to corridors.")]
+        public bool allowInCorridors = true;
 
-        [Tooltip("Maximum allowed slope angle in degrees (0 = flat, 90 = vertical).")]
-        public float maxSlope = 30f;
+        [Tooltip("Allow cells that belong to generic caves (not room/corridor).")]
+        public bool allowInGenericCaves = true;
 
-        [Header("Distance Conditions")]
-        [Tooltip("If true, the structure will avoid the landing zone around the origin.")]
+        [Tooltip("Allow cells marked as exterior (outdoor).")]
+        public bool allowInExterior = false;
+
+        [Header("Height / Radius Limits")]
+        [Tooltip("Minimum allowed world Y for the spawn position.")]
+        public float minWorldY = -9999f;
+
+        [Tooltip("Maximum allowed world Y for the spawn position.")]
+        public float maxWorldY = 9999f;
+
+        [Tooltip("If true, avoids the landing zone defined by landingRadius.")]
         public bool avoidLandingZone = true;
 
-        [Tooltip("Extra safe distance added around landing radius when avoidLandingZone is true.")]
-        public float landingSafeMargin = 2f;
+        [Tooltip("Minimum horizontal distance from planet center in world units.")]
+        public float minRadiusFromCenter = 0f;
 
-        [Header("Placement Offsets / Orientation")]
-        [Tooltip("Additional Y offset applied after collider-based ground alignment.")]
-        public float extraYOffset = 0f;
-
-        [Tooltip("If true, rotate the structure to align with the terrain normal.")]
-        public bool alignToTerrainNormal = false;
+        [Tooltip("Maximum horizontal distance from planet center in world units.")]
+        public float maxRadiusFromCenter = 999999f;
     }
 
-    [Header("Structures")]
-    [Tooltip("Structure spawn settings for this planet (single biome).")]
-    public StructureEntry[] structures;
-
-    [Serializable]
-    public class MonsterEntry
+    /// <summary>
+    /// Base class for voxel spawn entries:
+    /// - spawn counts (min/max)
+    /// - filter (surface/region/height/radius)
+    /// - placement details (offset, normal alignment, random yaw)
+    /// </summary>
+    [System.Serializable]
+    public abstract class VoxelSpawnEntryBase
     {
-        [Header("Prefab & Count")]
-        [Tooltip("Monster/creature prefab to spawn on the terrain.")]
-        public GameObject prefab;
+        [Tooltip("Optional identifier used for debugging or editor tools.")]
+        public string id;
 
-        [Tooltip("Minimum number of instances to spawn for this monster type.")]
+        [Header("Count")]
+        [Tooltip("Minimum number of instances to spawn.")]
         public int minCount = 0;
 
-        [Tooltip("Maximum number of instances to spawn for this monster type.")]
+        [Tooltip("Maximum number of instances to spawn.")]
         public int maxCount = 10;
 
-        [Header("Height & Slope Conditions")]
-        [Tooltip("Minimum world height where this monster can appear.")]
-        public float minHeight = -999f;
+        [Header("Filter")]
+        public VoxelSpawnFilter filter = new VoxelSpawnFilter();
 
-        [Tooltip("Maximum world height where this monster can appear.")]
-        public float maxHeight = 999f;
+        [Header("Placement")]
+        [Tooltip("Extra world-space offset applied after snapping to the surface.")]
+        public Vector3 extraOffset = Vector3.zero;
 
-        [Tooltip("Maximum allowed slope angle in degrees.")]
-        public float maxSlope = 35f;
+        [Tooltip("If true, the spawned object up-axis will align with the surface normal.")]
+        public bool alignToSurfaceNormal = true;
 
-        [Header("Distance Conditions")]
-        [Tooltip("If true, the monster will avoid the landing zone around the origin.")]
-        public bool avoidLandingZone = true;
-
-        [Tooltip("Minimum radius from the planet center where this monster can spawn.")]
-        public float minRadiusFromCenter = 15f;
-
-        [Tooltip("Maximum radius from the planet center where this monster can spawn.")]
-        public float maxRadiusFromCenter = 80f;
-
-        [Header("Placement Offsets / Orientation")]
-        [Tooltip("Additional Y offset applied after collider-based ground alignment.")]
-        public float extraYOffset = 0f;
-
-        [Tooltip("If true, rotate the monster to align with the terrain normal.")]
-        public bool alignToTerrainNormal = true;
+        [Tooltip("If true, apply a random yaw rotation around the surface normal.")]
+        public bool randomYawAroundNormal = true;
     }
 
-    [Header("Monsters")]
-    [Tooltip("Monster spawn settings for this planet (single biome).")]
-    public MonsterEntry[] monsters;
-
-    [Serializable]
-    public class ItemEntry
+    [System.Serializable]
+    public class VoxelStructureSpawnEntry : VoxelSpawnEntryBase
     {
-        [Header("Item & Count")]
-        [Tooltip("Item definition that will be spawned on the terrain.")]
+        [Header("Prefab")]
+        [Tooltip("Prefab to spawn as a structure (rocks, props, stalactites, etc.).")]
+        public GameObject prefab;
+    }
+
+    [System.Serializable]
+    public class VoxelMonsterSpawnEntry : VoxelSpawnEntryBase
+    {
+        [Header("Prefab")]
+        [Tooltip("Prefab to spawn as a monster or NPC.")]
+        public GameObject prefab;
+    }
+
+    [System.Serializable]
+    public class VoxelItemSpawnEntry : VoxelSpawnEntryBase
+    {
+        [Header("Item")]
+        [Tooltip("ItemDefinition whose worldPrefab will be spawned.")]
         public ItemDefinition itemDefinition;
-
-        [Tooltip("Minimum number of instances to spawn for this item type.")]
-        public int minCount = 0;
-
-        [Tooltip("Maximum number of instances to spawn for this item type.")]
-        public int maxCount = 20;
-
-        [Header("Height & Slope Conditions")]
-        [Tooltip("Minimum world height where this item can appear.")]
-        public float minHeight = -999f;
-
-        [Tooltip("Maximum world height where this item can appear.")]
-        public float maxHeight = 999f;
-
-        [Tooltip("Maximum allowed slope angle in degrees.")]
-        public float maxSlope = 35f;
-
-        [Header("Distance Conditions")]
-        [Tooltip("If true, the item will avoid the landing zone around the origin.")]
-        public bool avoidLandingZone = true;
-
-        [Tooltip("Minimum radius from the planet center where this item can spawn.")]
-        public float minRadiusFromCenter = 5f;
-
-        [Tooltip("Maximum radius from the planet center where this item can spawn.")]
-        public float maxRadiusFromCenter = 80f;
-
-        [Header("Placement Offsets / Orientation")]
-        [Tooltip("Additional Y offset applied after collider-based ground alignment.")]
-        public float extraYOffset = 0f;
-
-        [Tooltip("If true, rotate the item to align with the terrain normal.")]
-        public bool alignToTerrainNormal = false;
     }
 
-    [Header("Items")]
-    [Tooltip("Item spawn settings for this planet (single biome).")]
-    public ItemEntry[] items;
+    [Header("Voxel Structures (for caves / underground)")]
+    [Tooltip("Voxel-based structure spawn rules. Each entry is controlled by VoxelSpawnFilter.")]
+    public VoxelStructureSpawnEntry[] voxelStructures;
+
+    [Header("Voxel Monsters (for caves / underground)")]
+    [Tooltip("Voxel-based monster spawn rules.")]
+    public VoxelMonsterSpawnEntry[] voxelMonsters;
+
+    [Header("Voxel Items (for caves / underground)")]
+    [Tooltip("Voxel-based item spawn rules.")]
+    public VoxelItemSpawnEntry[] voxelItems;
 }

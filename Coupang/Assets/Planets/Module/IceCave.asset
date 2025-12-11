@@ -18,8 +18,8 @@ MonoBehaviour:
   undergroundThickness: 70
   caveSafeMarginFromTop: 10
   defaultGroundMaterial: {fileID: 0}
-  defaultUndergroundMaterial: {fileID: 2100000, guid: b994866080c881748925fabd860368a3, type: 2}
-  defaultCaveMaterial: {fileID: 2100000, guid: c3a40f39d4fe7c2459eb35ea2af5b3bb, type: 2}
+  defaultUndergroundMaterial: {fileID: 0}
+  defaultCaveMaterial: {fileID: 2100000, guid: 57f4c940f33d2814c97957533cfcc2e7, type: 2}
   caveMaterialStartY: -32
   enableCaves: 1
   caveNoiseScale: 0.05
@@ -30,13 +30,13 @@ MonoBehaviour:
   caveStrength: 0.2
   enablePathCaves: 1
   pathCaveCount: 3
-  pathMaxSteps: 300
+  pathMaxSteps: 250
   pathStepLength: 1.5
   pathBaseRadius: 4
   pathRadiusJitter: 1
   pathTurnRate: 0.3
   roomChance: 0.05
-  roomRadiusMultiplier: 3
+  roomRadiusMultiplier: 2
   roomRadiusRandomness: 1
   roomShapeNoiseFrequency: 0.4
   roomShapeNoiseAmplitude: 0.7
