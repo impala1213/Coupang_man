@@ -1,23 +1,21 @@
+ï»¿using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Helper utility for spawning structures / monsters / items
-/// based on MapProfile and voxel surface data.
-///
-/// ÇöÀç ¹öÀüÀº ÄÄÆÄÀÏ ¿¡·¯¸¦ ¾ø¾Ö±â À§ÇÑ "½ºÅÓ" ±¸ÇöÀÌ´Ù.
-/// ½ÇÁ¦ ½ºÆù ·ÎÁ÷Àº ÀÌÈÄ ´Ü°è¿¡¼­ Ã¤¿ö ³ÖÀ¸¸é µÈ´Ù.
+/// Helper class that spawns voxel-based structures / monsters / items
+/// using MapProfile rules + VoxelSurfaceData surface classification.
 /// </summary>
 public static class VoxelSpawnUtility
 {
     /// <summary>
-    /// Entry point used by VoxelTerrainModule.
-    /// Called after the voxel chunk and VoxelSurfaceData have been built.
+    /// Main entry point called from VoxelTerrainModule after terrain + surface data is built.
+    /// 
+    /// - profile: MapProfile with voxel spawn entries
+    /// - rng: Rng instance (already split by caller)
+    /// - terrainParent: parent transform used by VoxelTerrainModule (chunk is a child of this)
+    /// - chunk: VoxelChunk generated for this planet
+    /// - surfaceData: VoxelSurfaceData built via VoxelSurfaceBuilder
     /// </summary>
-    /// <param name="profile">Map profile used for this planet.</param>
-    /// <param name="rng">Deterministic RNG instance.</param>
-    /// <param name="terrainParent">Parent transform that owns the generated terrain.</param>
-    /// <param name="chunk">VoxelChunk that holds voxel data and mesh.</param>
-    /// <param name="surfaceData">Surface classification (floor/wall/ceiling, etc.).</param>
     public static void SpawnFromProfile(
         MapProfile profile,
         Rng rng,
@@ -25,28 +23,424 @@ public static class VoxelSpawnUtility
         VoxelChunk chunk,
         VoxelSurfaceData surfaceData)
     {
-        if (profile == null || terrainParent == null || chunk == null || surfaceData == null)
+        if (profile == null || rng == null || terrainParent == null || chunk == null || surfaceData == null)
         {
-            Debug.LogWarning(
-                "VoxelSpawnUtility.SpawnFromProfile: " +
-                "one or more arguments are null. No spawning performed.");
+            Debug.LogWarning("VoxelSpawnUtility.SpawnFromProfile: invalid arguments (null).");
             return;
         }
 
-        // ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
-        // TODO: ½ÇÁ¦ ½ºÆù ·ÎÁ÷
-        //  - profile ÂÊ¿¡ Á¤ÀÇÇÑ ±¸Á¶¹°/¸ó½ºÅÍ/¾ÆÀÌÅÛ ½ºÆù ¼³Á¤À» ÀĞ°í
-        //  - surfaceData ÀÇ ¹Ù´Ú/º®/ÃµÀå + ¹æ/Åë·Î/Áö»ó/µ¿±¼ ÇÃ·¡±×¸¦ Âü°íÇØ¼­
-        //  - Á¶°Ç¿¡ ¸Â´Â voxel À§Ä¡¸¦ °ñ¶ó prefab Instantiate
-        //
-        //  Áö±İÀº ÄÄÆÄÀÏ¸¸ Åë°ú½ÃÅ°±â À§ÇÑ ´õ¹Ì ±¸ÇöÀÌ¹Ç·Î,
-        //  ´Ü¼øÈ÷ µğ¹ö±× ·Î±×¸¸ ³²±ä´Ù.
-        // ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
+        if (surfaceData.cells == null || surfaceData.cells.Length == 0)
+        {
+            // í‘œë©´ í›„ë³´ê°€ ì•„ì˜ˆ ì—†ìœ¼ë©´ ìŠ¤í°ë„ ì—†ìŒ
+            Debug.Log("[VoxelSpawnUtility] No surface cells available, skipping spawn.");
+            return;
+        }
 
-#if UNITY_EDITOR
-        Debug.Log(
-            $"[VoxelSpawnUtility] SpawnFromProfile called for profile '{profile.name}'. " +
-            "Stub implementation: no prefabs are spawned yet.");
-#endif
+        // ì›”ë“œ ë£¨íŠ¸(ìµœìƒìœ„ WorldRoot) ì°¾ê¸°: ì—†ìœ¼ë©´ terrainParent ì‚¬ìš©
+        Transform worldRoot = ResolveWorldRoot(terrainParent);
+
+        // êµ¬ì¡°ë¬¼ / ëª¬ìŠ¤í„° / ì•„ì´í…œ ê°ê° ì •ë¦¬í•´ì„œ ë„£ì„ í´ë” ìƒì„±
+        Transform structuresRoot = GetOrCreateChild(worldRoot, "SpawnedStructures");
+        Transform monstersRoot = GetOrCreateChild(worldRoot, "SpawnedMonsters");
+        Transform itemsRoot = GetOrCreateChild(worldRoot, "SpawnedItems");
+
+        // í–‰ì„± ì¤‘ì‹¬ (ë°˜ê²½ í•„í„°ìš©)
+        Vector3 planetCenter = terrainParent.position;
+        float landingRadius = Mathf.Max(0f, profile.landingRadius);
+
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Structures
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        if (profile.voxelStructures != null && profile.voxelStructures.Length > 0)
+        {
+            foreach (var entry in profile.voxelStructures)
+            {
+                if (entry == null || entry.prefab == null)
+                    continue;
+
+                SpawnFromEntry(
+                    profile,
+                    entry,
+                    entry.prefab,
+                    rng.Split(1000 + HashId(entry.id, 1)),
+                    structuresRoot,
+                    surfaceData,
+                    planetCenter,
+                    landingRadius
+                );
+            }
+        }
+
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Monsters
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        if (profile.voxelMonsters != null && profile.voxelMonsters.Length > 0)
+        {
+            foreach (var entry in profile.voxelMonsters)
+            {
+                if (entry == null || entry.prefab == null)
+                    continue;
+
+                SpawnFromEntry(
+                    profile,
+                    entry,
+                    entry.prefab,
+                    rng.Split(2000 + HashId(entry.id, 2)),
+                    monstersRoot,
+                    surfaceData,
+                    planetCenter,
+                    landingRadius
+                );
+            }
+        }
+
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Items (ItemDefinition â†’ worldPrefab)
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        if (profile.voxelItems != null && profile.voxelItems.Length > 0)
+        {
+            foreach (var entry in profile.voxelItems)
+            {
+                if (entry == null || entry.itemDefinition == null)
+                    continue;
+
+                GameObject prefab = entry.itemDefinition.worldPrefab;
+                if (prefab == null)
+                {
+                    Debug.LogWarning($"[VoxelSpawnUtility] ItemDefinition '{entry.itemDefinition.name}' has no worldPrefab.");
+                    continue;
+                }
+
+                SpawnFromEntry(
+                    profile,
+                    entry,
+                    prefab,
+                    rng.Split(3000 + HashId(entry.id, 3)),
+                    itemsRoot,
+                    surfaceData,
+                    planetCenter,
+                    landingRadius
+                );
+            }
+        }
+    }
+
+    // =====================================================================
+    // ë‚´ë¶€ ìœ í‹¸
+    // =====================================================================
+
+    /// <summary>
+    /// TerrainParentë¡œë¶€í„° ìµœìƒìœ„ WorldRootë¥¼ ì°¾ëŠ”ë‹¤.
+    /// ì´ë¦„ì´ 'WorldRoot'ì¸ Transformì„ ìœ„ë¡œ íƒ€ê³  ì˜¬ë¼ê°€ë©° íƒìƒ‰.
+    /// ì—†ìœ¼ë©´ ê·¸ëƒ¥ terrainParent ìª½ ê³„ì¸µì˜ ìµœìƒìœ„ Transform ì‚¬ìš©.
+    /// </summary>
+    private static Transform ResolveWorldRoot(Transform terrainParent)
+    {
+        if (terrainParent == null)
+            return null;
+
+        Transform t = terrainParent;
+        Transform last = t;
+
+        while (t != null)
+        {
+            last = t;
+            if (t.name == "WorldRoot")
+                return t;
+
+            t = t.parent;
+        }
+
+        // WorldRootë¥¼ ëª» ì°¾ìœ¼ë©´ ìµœìƒìœ„(ë˜ëŠ” terrainParent) ì‚¬ìš©
+        return last != null ? last : terrainParent;
+    }
+
+    private static Transform GetOrCreateChild(Transform parent, string name)
+    {
+        if (parent == null)
+            return null;
+
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            Transform c = parent.GetChild(i);
+            if (c.name == name)
+                return c;
+        }
+
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        return go.transform;
+    }
+
+    /// <summary>
+    /// ë¬¸ìì—´ idë¥¼ ê°„ë‹¨íˆ í•´ì‹œí•´ì„œ seedì— ì„ì–´ ì“°ê¸° ìœ„í•œ í•¨ìˆ˜.
+    /// idê°€ ë¹„ì–´ìˆìœ¼ë©´ saltë§Œ ì‚¬ìš©.
+    /// </summary>
+    private static int HashId(string id, int salt)
+    {
+        if (string.IsNullOrEmpty(id))
+            return salt * 73856093;
+
+        unchecked
+        {
+            int h = 17;
+            for (int i = 0; i < id.Length; i++)
+            {
+                h = h * 31 + id[i];
+            }
+            h ^= salt * 73856093;
+            return h;
+        }
+    }
+
+    // =====================================================================
+    // í•˜ë‚˜ì˜ SpawnEntryì— ëŒ€í•œ ê³µí†µ ìŠ¤í° ë¡œì§
+    // =====================================================================
+
+    private static void SpawnFromEntry(
+        MapProfile profile,
+        MapProfile.VoxelSpawnEntryBase entry,
+        GameObject prefab,
+        Rng rng,
+        Transform parent,
+        VoxelSurfaceData surfaceData,
+        Vector3 planetCenter,
+        float landingRadius)
+    {
+        if (entry == null || prefab == null || surfaceData == null || surfaceData.cells == null)
+            return;
+
+        // ìŠ¤í° ê°œìˆ˜ ê²°ì •
+        int minCount = Mathf.Max(0, entry.minCount);
+        int maxCount = Mathf.Max(minCount, entry.maxCount);
+        if (maxCount == 0)
+            return;
+
+        int spawnCount = (minCount == maxCount)
+            ? minCount
+            : rng.NextInt(minCount, maxCount + 1); // max í¬í•¨
+
+        if (spawnCount <= 0)
+            return;
+
+        // í•„í„°ì— ë§ëŠ” SurfaceCell í›„ë³´ ëª¨ìœ¼ê¸°
+        List<int> candidateIndices = CollectCandidateIndices(
+            profile,
+            entry.filter,
+            surfaceData,
+            planetCenter,
+            landingRadius
+        );
+
+        if (candidateIndices.Count == 0)
+        {
+            // Debug.Log($"[VoxelSpawnUtility] Entry '{entry.id}' has no valid spawn candidates.");
+            return;
+        }
+
+        int spawned = 0;
+
+        // í›„ë³´ ë¦¬ìŠ¤íŠ¸ì—ì„œ ëœë¤ìœ¼ë¡œ ë½‘ì•„ì„œ ìŠ¤í°, ì¤‘ë³µ ìŠ¤í° ë°©ì§€ ìœ„í•´ swap-remove
+        for (int i = 0; i < spawnCount && candidateIndices.Count > 0; i++)
+        {
+            int pickIndex = rng.NextInt(0, candidateIndices.Count);
+            int cellIndex = candidateIndices[pickIndex];
+
+            candidateIndices[pickIndex] = candidateIndices[candidateIndices.Count - 1];
+            candidateIndices.RemoveAt(candidateIndices.Count - 1);
+
+            VoxelSurfaceData.SurfaceCell cell = surfaceData.cells[cellIndex];
+
+            // ì‹¤ì œ ìŠ¤í° ìœ„ì¹˜/íšŒì „ ê³„ì‚°
+            Vector3 pos;
+            Quaternion rot;
+            ComputeSpawnTransform(surfaceData, cell, entry, rng, out pos, out rot);
+
+            // í”„ë¦¬íŒ¹ ì¸ìŠ¤í„´ìŠ¤ ìƒì„± (ë¶€ëª¨ëŠ” WorldRoot ì•„ë˜ì˜ êµ¬ì¡°/ëª¬ìŠ¤í„°/ì•„ì´í…œ í´ë”ë“¤)
+            GameObject instance = Object.Instantiate(prefab, pos, rot, parent);
+
+            // ğŸ”’ ì•ˆì „ì¥ì¹˜: í”„ë¦¬íŒ¹ì´ ë¹„í™œì„± ìƒíƒœì—¬ë„ ì¸ìŠ¤í„´ìŠ¤ëŠ” ë¬´ì¡°ê±´ í™œì„±í™”
+            if (!instance.activeSelf)
+            {
+                instance.SetActive(true);
+            }
+
+            spawned++;
+        }
+
+        // Debug.Log($"[VoxelSpawnUtility] Spawned {spawned}/{spawnCount} of '{entry.id}' ({prefab.name})");
+    }
+
+    // =====================================================================
+    // í›„ë³´ SurfaceCell í•„í„°ë§
+    // =====================================================================
+
+    private static List<int> CollectCandidateIndices(
+        MapProfile profile,
+        MapProfile.VoxelSpawnFilter filter,
+        VoxelSurfaceData surfaceData,
+        Vector3 planetCenter,
+        float landingRadius)
+    {
+        List<int> result = new List<int>();
+
+        if (surfaceData.cells == null || surfaceData.cells.Length == 0)
+            return result;
+
+        float minY = filter.minWorldY;
+        float maxY = filter.maxWorldY;
+        float minR = filter.minRadiusFromCenter;
+        float maxR = filter.maxRadiusFromCenter;
+
+        for (int i = 0; i < surfaceData.cells.Length; i++)
+        {
+            var cell = surfaceData.cells[i];
+
+            Vector3 p = cell.worldPosition;
+            float y = p.y;
+
+            // 1) ë†’ì´ í•„í„°
+            if (y < minY || y > maxY)
+                continue;
+
+            // 2) í–‰ì„± ì¤‘ì‹¬ ë°˜ê²½ í•„í„°
+            Vector2 v = new Vector2(p.x - planetCenter.x, p.z - planetCenter.z);
+            float r = v.magnitude;
+
+            if (r < minR || r > maxR)
+                continue;
+
+            if (filter.avoidLandingZone && r < landingRadius)
+                continue;
+
+            // 3) í‘œë©´ íƒ€ì… (Floor / Wall / Ceiling)
+            if (!SurfaceTypeMatches(filter, cell.surfaceFlags))
+                continue;
+
+            // 4) Region íƒ€ì… (Room / Corridor / GenericCave / Exterior)
+            if (!RegionTypeMatches(filter, cell.regionFlags))
+                continue;
+
+            result.Add(i);
+        }
+
+        return result;
+    }
+
+    private static bool SurfaceTypeMatches(
+        MapProfile.VoxelSpawnFilter filter,
+        VoxelSurfaceFlags surfaceFlags)
+    {
+        bool wantFloor = filter.allowOnFloor;
+        bool wantWall = filter.allowOnWall;
+        bool wantCeiling = filter.allowOnCeiling;
+
+        if (!wantFloor && !wantWall && !wantCeiling)
+        {
+            // ì•„ë¬´ ê²ƒë„ í—ˆìš© ì•ˆ í•˜ë©´ ê·¸ëƒ¥ false
+            return false;
+        }
+
+        if ((surfaceFlags & VoxelSurfaceFlags.Floor) != 0 && wantFloor)
+            return true;
+
+        if ((surfaceFlags & VoxelSurfaceFlags.Wall) != 0 && wantWall)
+            return true;
+
+        if ((surfaceFlags & VoxelSurfaceFlags.Ceiling) != 0 && wantCeiling)
+            return true;
+
+        return false;
+    }
+
+    private static bool RegionTypeMatches(
+        MapProfile.VoxelSpawnFilter filter,
+        VoxelRegionFlags regionFlags)
+    {
+        // regionFlags ê°€ None ì´ë©´ "ì–´ë””ì—ë„ ì†í•˜ì§€ ì•ŠëŠ” ê³µê¸°" â†’ ê¸°ë³¸ì ìœ¼ë¡œ ìŠ¤í°í•˜ì§€ ì•ŠìŒ
+        if (regionFlags == VoxelRegionFlags.None)
+            return false;
+
+        if ((regionFlags & VoxelRegionFlags.Room) != 0 && filter.allowInRooms)
+            return true;
+
+        if ((regionFlags & VoxelRegionFlags.Corridor) != 0 && filter.allowInCorridors)
+            return true;
+
+        if ((regionFlags & VoxelRegionFlags.GenericCave) != 0 && filter.allowInGenericCaves)
+            return true;
+
+        if ((regionFlags & VoxelRegionFlags.Exterior) != 0 && filter.allowInExterior)
+            return true;
+
+        return false;
+    }
+
+    // =====================================================================
+    // ì‹¤ì œ ìŠ¤í° ìœ„ì¹˜ / íšŒì „ ê³„ì‚°
+    // =====================================================================
+
+    private static void ComputeSpawnTransform(
+        VoxelSurfaceData surfaceData,
+        VoxelSurfaceData.SurfaceCell cell,
+        MapProfile.VoxelSpawnEntryBase entry,
+        Rng rng,
+        out Vector3 position,
+        out Quaternion rotation)
+    {
+        Vector3 normal = cell.normal;
+        if (normal.sqrMagnitude < 1e-4f)
+        {
+            // ì•ˆì „ë¹µìœ¼ë¡œ ìœ„ìª½
+            normal = Vector3.up;
+        }
+        normal.Normalize();
+
+        // ê¸°ë³¸ ìœ„ì¹˜: SurfaceCell ì´ ê°€ì§„ worldPosition
+        position = cell.worldPosition;
+
+        // ë°”ë‹¥/ë²½/ì²œì¥ êµ¬ë¶„ì— ë”°ë¼ ì‚´ì§ ë„ì›Œì„œ ìƒì„± (ë°”ë‹¥ ê´€í†µ/íŠ•ê¹€ ë°©ì§€)
+        // Floorì¸ ê²½ìš°ëŠ” ì¡°ê¸ˆ ë” í¬ê²Œ ë„ì›Œì¤€ë‹¤.
+        float offsetMul = 0.05f;
+        if ((cell.surfaceFlags & VoxelSurfaceFlags.Floor) != 0)
+        {
+            // marching cubes + Rigidbodyê°€ ì„ì—¬ë„ ì•ˆì •ì ìœ¼ë¡œ ì•ˆ ëš«ë¦¬ê²Œ ì‚´ì§ ì—¬ìœ  ì¤Œ
+            offsetMul = 0.3f;
+        }
+
+        float baseOffset = Mathf.Max(0.01f, surfaceData.voxelSize * offsetMul);
+        position += normal * baseOffset;
+
+        // entryì—ì„œ ì§€ì •í•œ ì¶”ê°€ ì˜¤í”„ì…‹
+        position += entry.extraOffset;
+
+        // íšŒì „ ê³„ì‚°
+        Quaternion baseRot;
+        if (entry.alignToSurfaceNormal)
+        {
+            Vector3 up = normal;
+            // upì— ìˆ˜ì§ì¸ forward ë²¡í„° í•˜ë‚˜ ë§Œë“¤ê¸°
+            Vector3 forward = Vector3.Cross(Vector3.right, up);
+            if (forward.sqrMagnitude < 1e-4f)
+                forward = Vector3.Cross(Vector3.forward, up);
+            forward.Normalize();
+
+            baseRot = Quaternion.LookRotation(forward, up);
+        }
+        else
+        {
+            baseRot = Quaternion.identity;
+        }
+
+        if (entry.randomYawAroundNormal)
+        {
+            float angle = rng.NextFloat(0f, 360f);
+            Quaternion yaw = Quaternion.AngleAxis(angle, normal);
+            rotation = yaw * baseRot;
+        }
+        else
+        {
+            rotation = baseRot;
+        }
     }
 }

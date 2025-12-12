@@ -6,9 +6,12 @@ using UnityEngine.SceneManagement;
 public class ContainerAutoParent : MonoBehaviour
 {
     [Header("Container")]
-    [Tooltip("Root transform used for container local items (in gameplay scene).")]
-    public Transform containerRoot;   // GameSession.containerRoot
-    [Tooltip("Root transform used for items in ship environment (e.g., ShipEnvironmentRoot).")]
+    [Tooltip("Root transform used for container-local items (in gameplay scene). " +
+             "Only items under this root or under outsideParent will be managed.")]
+    public Transform containerRoot;   // e.g., GameSession.containerRoot
+
+    [Tooltip("Root transform used for items in ship environment (e.g., ShipEnvironmentRoot). " +
+             "Only items under this root or under containerRoot will be managed.")]
     public Transform outsideParent;   // ShipEnvironmentRoot or similar
 
     [Header("Filter")]
@@ -25,6 +28,7 @@ public class ContainerAutoParent : MonoBehaviour
             zoneCollider.isTrigger = true;
         }
 
+        // Default containerRoot = parent of this zone if not set in inspector
         if (containerRoot == null && transform.parent != null)
         {
             containerRoot = transform.parent;
@@ -39,11 +43,13 @@ public class ContainerAutoParent : MonoBehaviour
     /// <summary>
     /// Re-scan all WorldItems in this scene and parent them to containerRoot
     /// if inside the trigger volume, otherwise to outsideParent / scene root.
-    /// Rules:
+    /// 
+    /// IMPORTANT:
+    /// - Only items already under containerRoot or outsideParent are managed.
+    ///   Anything under other roots (e.g., WorldRoot on a planet) is ignored.
     /// - Cargos mounted on a Carrier (isOnCarrier / under CarrierController)
     ///   are always ignored and keep the Carrier as parent.
     /// - Carriers equipped on player (ignoreContainerAutoParent && isCarrier): ignored.
-    /// - All other WorldItems (including dropped carriers on deck) are parented as Container / Ship.
     /// </summary>
     public void ResyncSceneItems()
     {
@@ -51,6 +57,7 @@ public class ContainerAutoParent : MonoBehaviour
 
         Scene zoneScene = gameObject.scene;
         Bounds bounds = zoneCollider.bounds;
+
         WorldItem[] allWorldItems = UnityEngine.Object.FindObjectsByType<WorldItem>(
             FindObjectsInactive.Include,
             FindObjectsSortMode.None
@@ -63,6 +70,10 @@ public class ContainerAutoParent : MonoBehaviour
             if (((1 << wi.gameObject.layer) & worldItemLayers) == 0) continue;
 
             if (ShouldIgnore(wi))
+                continue;
+
+            // NEW: Only manage items that are already under containerRoot or outsideParent.
+            if (!IsManagedScope(wi.transform))
                 continue;
 
             Transform t = wi.transform;
@@ -86,8 +97,11 @@ public class ContainerAutoParent : MonoBehaviour
 
         WorldItem wi = other.GetComponentInParent<WorldItem>();
         if (wi == null) return;
-
         if (ShouldIgnore(wi))
+            return;
+
+        // NEW: Only manage items that belong to this container/ship hierarchy.
+        if (!IsManagedScope(wi.transform))
             return;
 
         ParentToContainer(wi.transform);
@@ -100,8 +114,11 @@ public class ContainerAutoParent : MonoBehaviour
 
         WorldItem wi = other.GetComponentInParent<WorldItem>();
         if (wi == null) return;
-
         if (ShouldIgnore(wi))
+            return;
+
+        // NEW: Only manage items that belong to this container/ship hierarchy.
+        if (!IsManagedScope(wi.transform))
             return;
 
         if (wi.transform.parent == containerRoot)
@@ -111,10 +128,27 @@ public class ContainerAutoParent : MonoBehaviour
     }
 
     /// <summary>
+    /// Returns true if this item is considered "managed" by this auto-parent zone:
+    /// - Either it is under containerRoot, or
+    /// - It is under outsideParent.
+    /// Any items under other roots (e.g., WorldRoot on a planet) will be ignored.
+    /// </summary>
+    private bool IsManagedScope(Transform itemTransform)
+    {
+        if (containerRoot != null && itemTransform.IsChildOf(containerRoot))
+            return true;
+
+        if (outsideParent != null && itemTransform.IsChildOf(outsideParent))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
     /// Decide whether ContainerAutoParent should NOT touch this WorldItem.
     /// - Mounted cargos on a carrier: always true.
     /// - Carriers equipped on player (ignoreContainerAutoParent && isCarrier): true.
-    /// - World carriers dropped on deck: false ¡æ treated like normal item.
+    /// - (You can later extend this to ignore any item with ignoreContainerAutoParent == true if desired.)
     /// </summary>
     private bool ShouldIgnore(WorldItem wi)
     {
@@ -162,7 +196,7 @@ public class ContainerAutoParent : MonoBehaviour
 
     private void ParentToOutside(Transform itemTransform, Scene currentScene)
     {
-        // In Ship scene, use outsideParent (ShipRoot) as parent.
+        // In ship scene, use outsideParent (ShipRoot) as parent.
         if (outsideParent != null && outsideParent.gameObject.scene == currentScene)
         {
             itemTransform.SetParent(outsideParent, true);

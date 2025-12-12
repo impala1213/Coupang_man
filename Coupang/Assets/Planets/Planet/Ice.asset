@@ -15,7 +15,7 @@ MonoBehaviour:
   mapWidth: 256
   mapLength: 256
   tileSize: 3
-  baseHeight: -2
+  baseHeight: 0
   heightScale: 80
   noiseScale: 0.002
   noiseOctaves: 3
@@ -31,17 +31,17 @@ MonoBehaviour:
     maxCount: 10
     filter:
       allowOnFloor: 1
-      allowOnWall: 1
-      allowOnCeiling: 1
+      allowOnWall: 0
+      allowOnCeiling: 0
       allowInRooms: 1
-      allowInCorridors: 1
-      allowInGenericCaves: 1
-      allowInExterior: 1
+      allowInCorridors: 0
+      allowInGenericCaves: 0
+      allowInExterior: 0
       minWorldY: -100
-      maxWorldY: 100
+      maxWorldY: 9999
       avoidLandingZone: 0
       minRadiusFromCenter: 0
-      maxRadiusFromCenter: 0
+      maxRadiusFromCenter: 256
     extraOffset: {x: 0, y: 0, z: 0}
     alignToSurfaceNormal: 0
     randomYawAroundNormal: 0

@@ -17,6 +17,7 @@ GameObject:
   - component: {fileID: 7216851662328307162}
   - component: {fileID: 3227698365231234657}
   - component: {fileID: -3307160941821665628}
+  - component: {fileID: -3909847846634834637}
   m_Layer: 6
   m_Name: MeatCan
   m_TagString: WorldItem
@@ -200,3 +201,15 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.37074694, y: 0.094646744, z: 0.2530015}
   m_Center: {x: 0.00709787, y: 0.017440278, z: 0.016255893}
+--- !u!114 &-3909847846634834637
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2635283057471754944}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd59b3352671bf84a8344f139b268ae8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

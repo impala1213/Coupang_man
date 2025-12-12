@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 80f04b97d06d48c4c806f6a9972a9f0c, type: 3}
-  m_Name: IceCave
+  m_Name: Volcano
   m_EditorClassIdentifier: 
   voxelHeight: 120
   voxelSizeOverride: 0
@@ -19,8 +19,8 @@ MonoBehaviour:
   caveSafeMarginFromTop: 10
   defaultGroundMaterial: {fileID: 0}
   defaultUndergroundMaterial: {fileID: 0}
-  defaultCaveMaterial: {fileID: 2100000, guid: c3a40f39d4fe7c2459eb35ea2af5b3bb, type: 2}
-  caveMaterialStartY: -32
+  defaultCaveMaterial: {fileID: 2100000, guid: 57f4c940f33d2814c97957533cfcc2e7, type: 2}
+  caveMaterialStartY: -30
   enableCaves: 1
   caveNoiseScale: 0.05
   caveOctaves: 2
@@ -30,22 +30,22 @@ MonoBehaviour:
   caveStrength: 0.2
   enablePathCaves: 1
   pathCaveCount: 3
-  pathMaxSteps: 250
+  pathMaxSteps: 260
   pathStepLength: 1.5
   pathBaseRadius: 4
   pathRadiusJitter: 1
-  pathTurnRate: 0.3
-  roomChance: 0.05
-  roomRadiusMultiplier: 2
-  roomRadiusRandomness: 1
-  roomShapeNoiseFrequency: 0.4
-  roomShapeNoiseAmplitude: 0.7
+  pathTurnRate: 0.25
+  roomChance: 0.057
+  roomRadiusMultiplier: 3
+  roomRadiusRandomness: 0.5
+  roomShapeNoiseFrequency: 0.35
+  roomShapeNoiseAmplitude: 0.811
   roomShapeNoiseOctaves: 2
   minSurfaceEntrances: 3
   entranceRadius: 2
   entranceSlopeDegrees: 5
   entranceStepLength: 3
-  entranceJitter: 0.528
+  entranceJitter: 0.508
   entranceFloorToleranceDown: 0.8
   enableBoundaryShell: 1
   maxBoundaryThickness: 3
