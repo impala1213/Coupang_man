@@ -9,7 +9,7 @@ using UnityEngine;
 /// - Connector transforms' +Z axis (Transform.forward, blue arrow) should point OUTWARD from the piece.
 /// - Two connectors connect when their connectorTag matches.
 /// - Corridors may have 2+ connectors (junctions). After attaching, ALL unused connectors (except the inbound) will be enqueued.
-/// - Caps should have 1 connector (wall).
+/// - Terminal rooms are special end pieces: after attaching, their remaining connectors are force-closed (marked used).
 /// </summary>
 public static class CaveDungeonGenerator
 {
@@ -75,16 +75,12 @@ public static class CaveDungeonGenerator
 
         CaveInstance inst = rootGO.AddComponent<CaveInstance>();
 
-        // Occupancy for overlap avoidance
         List<OccupiedEntry> occupied = new List<OccupiedEntry>(64);
-
-        // Open connectors to expand from
         Queue<OpenSocket> open = new Queue<OpenSocket>(64);
 
-        // 1) Spawn start piece (optionally uses exitPrefab as the start)
+        // 1) Spawn start piece
         bool startedFromExitPrefab = def.useExitPrefabAsStartPiece && def.exitPrefab != null;
 
-        // If the exitPrefab has no connectors, fall back to a normal room start.
         if (startedFromExitPrefab)
         {
             CaveConnector[] exitConns = def.exitPrefab.GetComponentsInChildren<CaveConnector>(true);
@@ -110,7 +106,7 @@ public static class CaveDungeonGenerator
 
         res.startPieceRoot = startPiece.transform;
 
-        // Entry point: if a child named "EntryPoint" exists, use it.
+        // Entry point
         Transform entry = startPiece.transform.Find("EntryPoint");
         if (entry == null)
         {
@@ -123,7 +119,8 @@ public static class CaveDungeonGenerator
 
         inst.insideEntryPoint = entry;
 
-        // Add start piece bounds
+        int roomsPlaced = 1;
+
         if (def.preventOverlaps)
         {
             if (TryComputeLocalBounds(rootGO.transform, startPiece, out Bounds b0))
@@ -135,8 +132,6 @@ public static class CaveDungeonGenerator
 
         EnqueuePieceConnectors(startPiece, open, NodeKind.Room, 0);
 
-        int roomsPlaced = 1;
-
         // 2) Expand
         int safetyIterations = 100000;
         int iter = 0;
@@ -145,40 +140,37 @@ public static class CaveDungeonGenerator
         {
             OpenSocket s = open.Dequeue();
             CaveConnector from = s.connector;
-            if (from == null)
-                continue;
+            if (from == null) continue;
+            if (from.isUsed) continue;
+            if (!from.enabledForGeneration) continue;
 
-            if (from.isUsed)
-                continue;
-
-            if (!from.enabledForGeneration)
-                continue;
-
-            // If we've hit max rooms, only allow corridor continuation that doesn't create new rooms,
-            // otherwise cap.
-            if (roomsPlaced >= Mathf.Max(1, def.maxRooms) && s.kind != NodeKind.Corridor)
-            {
-                PlaceCap(def, rng.Split(91000 + iter), rootGO.transform, from, occupied);
-                continue;
-            }
-
+            // Room socket behavior
             if (s.kind == NodeKind.Room)
             {
+                // If we've hit max rooms, don't create more rooms. Just end (terminal/cap).
+                if (roomsPlaced >= Mathf.Max(1, def.maxRooms))
+                {
+                    TryEndWithTerminalOrCap(def, rng.Split(91000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
+                    continue;
+                }
+
                 // Start corridor chain from a room connector
                 if (rng.NextFloat(0f, 1f) > Mathf.Clamp01(def.roomToCorridorProbability))
                 {
-                    PlaceCap(def, rng.Split(92000 + iter), rootGO.transform, from, occupied);
+                    // End this socket (prefer terminal, otherwise cap)
+                    TryEndWithTerminalOrCap(def, rng.Split(92000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
                     continue;
                 }
 
                 if (!TryAttachCorridor(def, rng.Split(10000 + iter), rootGO.transform, from, occupied,
                         out List<CaveConnector> outs, out Transform corridorRoot))
                 {
-                    PlaceCap(def, rng.Split(93000 + iter), rootGO.transform, from, occupied);
+                    // Can't place corridor; end here
+                    TryEndWithTerminalOrCap(def, rng.Split(93000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
                     continue;
                 }
 
-                // ★ Junction support: enqueue ALL remaining connectors as corridor sockets
+                // Junction support: enqueue ALL remaining connectors as corridor sockets
                 if (outs != null)
                 {
                     for (int k = 0; k < outs.Count; k++)
@@ -192,7 +184,7 @@ public static class CaveDungeonGenerator
                 continue;
             }
 
-            // Corridor socket: decide continue corridor vs spawn room vs cap
+            // Corridor socket behavior
             float contP = Mathf.Clamp01(def.corridorContinueProbability);
             float toRoomP = Mathf.Clamp01(def.corridorToRoomProbability);
             if (contP + toRoomP > 1f)
@@ -205,16 +197,17 @@ public static class CaveDungeonGenerator
             float roll = rng.NextFloat(0f, 1f);
             bool canChain = s.corridorChainDepth < Mathf.Max(0, def.maxCorridorChain);
 
+            // Continue corridor
             if (canChain && roll < contP)
             {
                 if (!TryAttachCorridor(def, rng.Split(20000 + iter), rootGO.transform, from, occupied,
                         out List<CaveConnector> outs, out Transform corridorRoot))
                 {
-                    PlaceCap(def, rng.Split(94000 + iter), rootGO.transform, from, occupied);
+                    // End here
+                    TryEndWithTerminalOrCap(def, rng.Split(94000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
                     continue;
                 }
 
-                // ★ Enqueue all branches; each branch continues with nextDepth
                 if (outs != null)
                 {
                     int nextDepth = s.corridorChainDepth + 1;
@@ -229,12 +222,13 @@ public static class CaveDungeonGenerator
                 continue;
             }
 
-            // Try spawn a room at the end of corridor
+            // Spawn a normal room at the end of corridor
             if (roll < contP + toRoomP && roomsPlaced < Mathf.Max(1, def.maxRooms))
             {
                 if (!TryAttachRoom(def, rng.Split(30000 + iter), rootGO.transform, from, occupied, out GameObject roomGO))
                 {
-                    PlaceCap(def, rng.Split(95000 + iter), rootGO.transform, from, occupied);
+                    // If normal room fails, try terminal/cap
+                    TryEndWithTerminalOrCap(def, rng.Split(95000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
                     continue;
                 }
 
@@ -243,11 +237,11 @@ public static class CaveDungeonGenerator
                 continue;
             }
 
-            // Otherwise, cap
-            PlaceCap(def, rng.Split(96000 + iter), rootGO.transform, from, occupied);
+            // Otherwise: end this branch (prefer terminal room, otherwise cap)
+            TryEndWithTerminalOrCap(def, rng.Split(96000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
         }
 
-        // 3) Cap leftover connectors
+        // 3) Close leftover connectors
         if (def.capUnusedConnectors)
         {
             CaveConnector[] all = rootGO.GetComponentsInChildren<CaveConnector>(true);
@@ -259,7 +253,8 @@ public static class CaveDungeonGenerator
                 if (!c.enabledForGeneration) continue;
                 if (c.allowOpenEnd) continue;
 
-                PlaceCap(def, rng.Split(97000 + i), rootGO.transform, c, occupied);
+                // Treat as "end": try terminal first, else cap
+                TryEndWithTerminalOrCap(def, rng.Split(97000 + i), rootGO.transform, c, occupied, ref roomsPlaced);
             }
         }
 
@@ -305,7 +300,6 @@ public static class CaveDungeonGenerator
 
         if (total <= 0f)
         {
-            // Fallback: first valid
             for (int i = 0; i < list.Length; i++)
                 if (list[i].prefab != null)
                     return list[i].prefab;
@@ -379,7 +373,6 @@ public static class CaveDungeonGenerator
                 }
             }
 
-            // Mark used endpoints (connection)
             from.MarkUsed();
             inConn.MarkUsed();
 
@@ -392,7 +385,7 @@ public static class CaveDungeonGenerator
                 }
             }
 
-            // ★ Junction support: return ALL unused connectors except inbound
+            // Junction support: return ALL unused connectors except inbound
             CaveConnector[] all = corridor.GetComponentsInChildren<CaveConnector>(true);
             List<CaveConnector> outs = new List<CaveConnector>(all != null ? all.Length : 0);
 
@@ -479,6 +472,124 @@ public static class CaveDungeonGenerator
         return false;
     }
 
+    private static bool TryAttachTerminalRoom(
+        CaveFeatureDefinition def,
+        Rng rng,
+        Transform dungeonRoot,
+        CaveConnector from,
+        List<OccupiedEntry> occupied,
+        out GameObject terminalGO)
+    {
+        terminalGO = null;
+
+        if (def == null || rng == null || dungeonRoot == null || from == null)
+            return false;
+
+        if (!def.useTerminalRooms)
+            return false;
+
+        if (def.terminalRooms == null || def.terminalRooms.Length == 0)
+            return false;
+
+        float p = Mathf.Clamp01(def.corridorToTerminalRoomProbability);
+        if (p <= 0f)
+            return false;
+
+        if (rng.NextFloat(0f, 1f) > p)
+            return false;
+
+        int tries = Mathf.Max(1, def.placementRetriesPerConnector);
+
+        for (int attempt = 0; attempt < tries; attempt++)
+        {
+            GameObject termPrefab = PickWeighted(def.terminalRooms, rng.Split(6100 + attempt * 31));
+            if (termPrefab == null)
+                return false;
+
+            GameObject term = Object.Instantiate(termPrefab, dungeonRoot);
+            term.name = $"TerminalRoom_Attempt_{attempt}";
+
+            CaveConnector inConn;
+            if (!TryPickRoomConnector(term, from.connectorTag, rng.Split(7100 + attempt * 37), out inConn))
+            {
+                Object.Destroy(term);
+                continue;
+            }
+
+            AlignConnectorTo(inConn.transform, term.transform, from.transform);
+
+            if (def.preventOverlaps)
+            {
+                if (WouldOverlapOrMeet(def, dungeonRoot, term, from, occupied))
+                {
+                    Object.Destroy(term);
+                    continue;
+                }
+            }
+
+            from.MarkUsed();
+            inConn.MarkUsed();
+
+            if (def.preventOverlaps)
+            {
+                if (TryComputeLocalBounds(dungeonRoot, term, out Bounds b))
+                {
+                    NormalizeBounds(ref b, def);
+                    occupied.Add(new OccupiedEntry(b, term.transform));
+                }
+            }
+
+            // Terminal room should not expand: force-close any remaining connectors on this piece
+            CaveConnector[] all = term.GetComponentsInChildren<CaveConnector>(true);
+            if (all != null)
+            {
+                for (int i = 0; i < all.Length; i++)
+                {
+                    CaveConnector c = all[i];
+                    if (c == null) continue;
+                    if (!c.enabledForGeneration) continue;
+                    if (c.allowOpenEnd) continue;
+
+                    // Mark used so generator won't expand from it later
+                    c.MarkUsed();
+                }
+            }
+
+            terminalGO = term;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void TryEndWithTerminalOrCap(
+        CaveFeatureDefinition def,
+        Rng rng,
+        Transform dungeonRoot,
+        CaveConnector target,
+        List<OccupiedEntry> occupied,
+        ref int roomsPlaced)
+    {
+        if (def == null || rng == null || dungeonRoot == null || target == null)
+            return;
+
+        if (target.isUsed)
+            return;
+
+        // If we can still place rooms, try terminal first
+        if (roomsPlaced < Mathf.Max(1, def.maxRooms))
+        {
+            if (TryAttachTerminalRoom(def, rng.Split(80100), dungeonRoot, target, occupied, out GameObject terminalGO))
+            {
+                roomsPlaced++;
+                return;
+            }
+        }
+
+        // Fallback to cap
+        PlaceCap(def, rng.Split(80200), dungeonRoot, target, occupied);
+    }
+
     private static bool WouldOverlapOrMeet(
         CaveFeatureDefinition def,
         Transform dungeonRoot,
@@ -510,7 +621,7 @@ public static class CaveDungeonGenerator
                 return true;
         }
 
-        // "Meeting" check: avoid getting too close to existing connectors (optional)
+        // "Meeting" check
         if (def.minConnectorSeparation > 0f)
         {
             CaveConnector[] newConns = candidatePiece.GetComponentsInChildren<CaveConnector>(true);
@@ -523,7 +634,6 @@ public static class CaveDungeonGenerator
                 CaveConnector a = newConns[i];
                 if (a == null) continue;
 
-                // Ignore inbound connector(s) that sit on the connection target.
                 if (connectingTo != null)
                 {
                     if (a.transform == connectingTo.transform)
@@ -540,14 +650,10 @@ public static class CaveDungeonGenerator
                     if (b.isUsed) continue;
                     if (connectingTo != null && b == connectingTo) continue;
 
-                    // Skip connectors inside the candidate itself
                     if (b.transform.IsChildOf(candidatePiece.transform))
                         continue;
 
-                    Vector3 pa = a.transform.position;
-                    Vector3 pb = b.transform.position;
-
-                    if ((pa - pb).sqrMagnitude < minDistSq)
+                    if ((a.transform.position - b.transform.position).sqrMagnitude < minDistSq)
                         return true;
                 }
             }
@@ -576,7 +682,6 @@ public static class CaveDungeonGenerator
         float touch = Mathf.Max(0f, def.touchEpsilon);
         float pad = Mathf.Max(0f, def.overlapPadding);
 
-        // Shrink a bit to allow face-to-face touching
         if (touch > 0f)
         {
             Vector3 s = b.size;
@@ -679,7 +784,6 @@ public static class CaveDungeonGenerator
             return;
         }
 
-        // Fallback: just mark used to avoid infinite loops
         target.MarkUsed();
     }
 
@@ -688,18 +792,16 @@ public static class CaveDungeonGenerator
         if (sourceConnector == null || pieceRoot == null || targetConnector == null)
             return;
 
-        // OUT direction is +Z (forward)
+        // OUT is +Z (forward)
         Vector3 targetOut = targetConnector.forward;
-        Vector3 desiredForward = (-targetOut).normalized; // source.forward should face -target.forward
+        Vector3 desiredForward = (-targetOut).normalized;
 
-        // Lock roll to world up so corridors/doors don't twist unpredictably
         Vector3 desiredUp = Vector3.ProjectOnPlane(Vector3.up, desiredForward).normalized;
         if (desiredUp.sqrMagnitude < 1e-6f)
             desiredUp = Vector3.up;
 
         Quaternion desiredConnRot = Quaternion.LookRotation(desiredForward, desiredUp);
 
-        // Solve pieceRoot pose so that sourceConnector matches desired connector pose
         Vector3 connLocalPos = pieceRoot.InverseTransformPoint(sourceConnector.position);
         Quaternion connLocalRot = Quaternion.Inverse(pieceRoot.rotation) * sourceConnector.rotation;
 
@@ -716,14 +818,12 @@ public static class CaveDungeonGenerator
         if (dungeonRoot == null || go == null)
             return false;
 
-        // Prefer renderers
         Renderer[] renderers = go.GetComponentsInChildren<Renderer>(true);
         if (renderers != null && renderers.Length > 0)
         {
             return ComputeLocalBoundsFromWorldBounds(dungeonRoot, renderers, out localBounds);
         }
 
-        // Fallback colliders
         Collider[] colliders = go.GetComponentsInChildren<Collider>(true);
         if (colliders != null && colliders.Length > 0)
         {
@@ -756,7 +856,6 @@ public static class CaveDungeonGenerator
             Vector3 wmin = wb.min;
             Vector3 wmax = wb.max;
 
-            // 8 corners of world AABB
             Vector3[] corners = new Vector3[8]
             {
                 new Vector3(wmin.x, wmin.y, wmin.z),

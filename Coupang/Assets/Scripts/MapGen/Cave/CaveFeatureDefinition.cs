@@ -63,7 +63,7 @@ public class CaveFeatureDefinition : FeatureDefinition
 
     [Header("Modular Generation - Topology")]
     [Min(1)]
-    [Tooltip("Maximum number of room pieces placed (including the start room).")]
+    [Tooltip("Maximum number of room pieces placed (including the start room, and terminal rooms).")]
     public int maxRooms = 12;
 
     [Range(0f, 1f)]
@@ -75,12 +75,23 @@ public class CaveFeatureDefinition : FeatureDefinition
     public float corridorContinueProbability = 0.35f;
 
     [Range(0f, 1f)]
-    [Tooltip("Probability that an available CORRIDOR connector ends by spawning a room (if not continuing a corridor). Remaining probability becomes a cap.")]
+    [Tooltip("Probability that an available CORRIDOR connector ends by spawning a normal room (if not continuing a corridor). Remaining probability becomes an end (terminal/cap).")]
     public float corridorToRoomProbability = 0.75f;
 
     [Min(0)]
-    [Tooltip("Maximum number of consecutive corridor segments between rooms. 0 means corridors never chain (room -> corridor -> room/cap).")]
+    [Tooltip("Maximum number of consecutive corridor segments between rooms. 0 means corridors never chain (room -> corridor -> room/end).")]
     public int maxCorridorChain = 2;
+
+    [Header("Terminal Rooms (End Rooms)")]
+    [Tooltip("If true, when a branch would end (cap), try to place a terminal room instead.")]
+    public bool useTerminalRooms = true;
+
+    [Range(0f, 1f)]
+    [Tooltip("When a branch would end (cap), chance to try placing a terminal room first. If placement fails, it falls back to cap.")]
+    public float corridorToTerminalRoomProbability = 1f;
+
+    [Tooltip("Terminal room prefabs used at the end of cave branches. Recommended: exactly 1 connector (in).")]
+    public WeightedPrefab[] terminalRooms;
 
     [Tooltip("If true, any remaining unused connectors will be capped at the end (unless allowOpenEnd is true on the connector).")]
     public bool capUnusedConnectors = true;
@@ -98,18 +109,18 @@ public class CaveFeatureDefinition : FeatureDefinition
     public float touchEpsilon = 0.03f;
 
     [Min(0f)]
-    [Tooltip("Reject placements where an unused connector ends up too close to an existing connector (helps prevent accidental meeting). 0 disables.")]
+    [Tooltip("Reject placements where an unused connector ends up too close to an existing connector (helps prevent accidental \"meeting\"). 0 disables.")]
     public float minConnectorSeparation = 0.5f;
 
     [Min(1)]
-    [Tooltip("How many different prefab attempts to try per connector before giving up and capping.")]
+    [Tooltip("How many different prefab attempts to try per connector before giving up and ending.")]
     public int placementRetriesPerConnector = 6;
 
     [Header("Prefabs")]
     [Tooltip("Room prefabs. Should contain CaveConnector children.")]
     public WeightedPrefab[] rooms;
 
-    [Tooltip("Corridor prefabs. Should contain 2 CaveConnector children.")]
+    [Tooltip("Corridor prefabs. Can contain 2+ CaveConnector children (junctions supported).")]
     public WeightedPrefab[] corridors;
 
     [Tooltip("Cap (wall) prefabs. Should contain 1 CaveConnector child.")]
