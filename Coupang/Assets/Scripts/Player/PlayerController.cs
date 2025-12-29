@@ -50,8 +50,8 @@ public class PlayerController : MonoBehaviour
     private bool isKnockedDown;
     private float knockdownTimer;
 
-    private UniversalLever currentLever;
-    private bool leverUseHeld;
+    private PlayerInteractableBase currentInteractable;
+    private bool interactUseHeld;
 
     // carrier drop hold state
     private bool carrierDropHolding;
@@ -78,7 +78,7 @@ public class PlayerController : MonoBehaviour
     void Update()
     {
         Move();
-        UpdateLeverFocusAndTick();
+        UpdateInteractableFocusAndTick();
         HandleHotbar();
         HandleActions();
         HandleCarrierDropHold();
@@ -154,13 +154,15 @@ public class PlayerController : MonoBehaviour
 
     void HandleActions()
     {
-        // ¦¡¦¡ E key: lever first, otherwise pickup item ¦¡¦¡
+        // ï¿½ï¿½ï¿½ï¿½ E key: lever first, otherwise pickup item ï¿½ï¿½ï¿½ï¿½
+        
+        // E key: interactable first, otherwise pickup item
         if (Input.GetKeyDown(KeyCode.E))
         {
-            if (currentLever != null)
+            if (currentInteractable != null)
             {
-                leverUseHeld = true;
-                currentLever.OnUsePressed();
+                interactUseHeld = currentInteractable.IsHoldInteraction;
+                currentInteractable.OnUsePressed(this);
             }
             else
             {
@@ -184,14 +186,15 @@ public class PlayerController : MonoBehaviour
 
         if (Input.GetKeyUp(KeyCode.E))
         {
-            if (currentLever != null)
+            if (currentInteractable != null && currentInteractable.IsHoldInteraction)
             {
-                leverUseHeld = false;
-                currentLever.OnUseReleased();
+                interactUseHeld = false;
+                currentInteractable.OnUseReleased(this);
             }
         }
 
-        // ¦¡¦¡ G key: normal item drop OR carrier drop (hold) ¦¡¦¡
+
+        // ï¿½ï¿½ï¿½ï¿½ G key: normal item drop OR carrier drop (hold) ï¿½ï¿½ï¿½ï¿½
         if (Input.GetKeyDown(KeyCode.G))
         {
             if (!inventory) return;
@@ -306,7 +309,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // If a lever is focused, do not inspect carrier
-        if (currentLever != null)
+        if (currentInteractable != null)
         {
             carrierInspectTimer = 0f;
             carrierInspectTarget = null;
@@ -383,12 +386,13 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    void UpdateLeverFocusAndTick()
+    
+    void UpdateInteractableFocusAndTick()
     {
         Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
         if (!cam)
         {
-            ClearLeverFocus();
+            ClearInteractableFocus();
             return;
         }
 
@@ -400,7 +404,7 @@ public class PlayerController : MonoBehaviour
             combinedMask |= leverMask;
         }
 
-        UniversalLever hitLever = null;
+        PlayerInteractableBase hitInteractable = null;
 
         if (Physics.Raycast(
                 cam.transform.position,
@@ -410,52 +414,79 @@ public class PlayerController : MonoBehaviour
                 combinedMask,
                 QueryTriggerInteraction.Collide))
         {
-            hitLever = hit.collider.GetComponentInParent<UniversalLever>();
+            hitInteractable = hit.collider.GetComponentInParent<PlayerInteractableBase>();
 
             if (debugLever)
             {
-                Debug.Log($"Lever ray hit: {hit.collider.name}, lever = {(hitLever ? hitLever.name : "none")}");
+                Debug.Log($"Interact ray hit: {hit.collider.name}, interactable = {(hitInteractable ? hitInteractable.name : "none")}");
             }
         }
         else
         {
             if (debugLever)
             {
-                Debug.Log("Lever ray hit nothing");
+                Debug.Log("Interact ray hit nothing");
             }
         }
 
-        if (hitLever != currentLever)
+        if (hitInteractable != currentInteractable)
         {
-            if (currentLever != null)
+            if (currentInteractable != null)
             {
-                currentLever.FocusExit();
+                currentInteractable.OnFocusExit(this);
             }
 
-            currentLever = hitLever;
+            currentInteractable = hitInteractable;
 
-            if (currentLever != null)
+            if (currentInteractable != null)
             {
-                currentLever.FocusEnter();
+                currentInteractable.OnFocusEnter(this);
             }
         }
 
-        if (currentLever != null && leverUseHeld)
+        if (currentInteractable != null && interactUseHeld && currentInteractable.IsHoldInteraction)
         {
-            currentLever.Tick(Time.deltaTime);
+            currentInteractable.TickWhileHeld(this, Time.deltaTime);
         }
     }
 
-    void ClearLeverFocus()
+    void ClearInteractableFocus()
     {
-        if (currentLever != null)
+        if (currentInteractable != null)
         {
-            currentLever.FocusExit();
-            currentLever = null;
+            currentInteractable.OnFocusExit(this);
+            currentInteractable = null;
         }
     }
 
-    public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoSpill)
+    /// <summary>
+    /// Teleport the player safely (disables CharacterController briefly).
+    /// </summary>
+    public void TeleportTo(Vector3 worldPosition, Quaternion worldRotation, bool resetKnockback = true)
+    {
+        if (resetKnockback)
+        {
+            knockbackVelocity = Vector3.zero;
+            isKnockedDown = false;
+            knockdownTimer = 0f;
+        }
+
+        if (controller != null)
+        {
+            bool wasEnabled = controller.enabled;
+            controller.enabled = false;
+            transform.SetPositionAndRotation(worldPosition, worldRotation);
+            controller.enabled = wasEnabled;
+        }
+        else
+        {
+            transform.SetPositionAndRotation(worldPosition, worldRotation);
+        }
+
+        verticalVel = 0f;
+    }
+
+public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoSpill)
     {
         if (!canBeKnockedBack || controller == null) return;
 

@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 80f04b97d06d48c4c806f6a9972a9f0c, type: 3}
   m_Name: Volcano
   m_EditorClassIdentifier: 
+  useLegacyVoxelCaves: 0
   voxelHeight: 120
   voxelSizeOverride: 0
   undergroundBottomY: -30
@@ -41,6 +42,12 @@ MonoBehaviour:
   roomShapeNoiseFrequency: 0.35
   roomShapeNoiseAmplitude: 0.811
   roomShapeNoiseOctaves: 2
+  enableClampedRoomFloorNoise: 1
+  clampedRoomFloorNoiseAmplitudeVoxels: 2
+  clampedRoomFloorNoiseFrequency: 0.12
+  clampedRoomFloorNoiseOctaves: 2
+  clampedRoomFloorNoisePersistence: 0.5
+  clampedRoomFloorNoiseLacunarity: 2
   minSurfaceEntrances: 3
   entranceRadius: 2
   entranceSlopeDegrees: 5

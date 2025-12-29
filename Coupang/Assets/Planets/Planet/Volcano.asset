@@ -25,6 +25,8 @@ MonoBehaviour:
   landingFalloff: 40
   groundMaterialOverride: {fileID: 2100000, guid: 57f4c940f33d2814c97957533cfcc2e7, type: 2}
   terrainModule: {fileID: 11400000, guid: 2e8e07015b1806d4a96d64d2246a0f17, type: 2}
+  enableFeatureRegions: 1
+  featureDirectory: {fileID: 11400000, guid: 4e31c4cc0261eb24e95e51808100fd22, type: 2}
   voxelStructures: []
   voxelMonsters: []
   voxelItems: []
