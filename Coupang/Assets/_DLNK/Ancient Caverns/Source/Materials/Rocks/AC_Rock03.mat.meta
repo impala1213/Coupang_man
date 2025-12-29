@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 6c44f174207230144817dbf5675a3d49
+timeCreated: 1509810791
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/Source/Materials/Rocks/AC_Rock03.mat
+  uploadId: 571538

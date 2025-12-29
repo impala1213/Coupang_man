@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 411290298b3fa1142ae567b6259888c9
+timeCreated: 1526843121
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 25800000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 41521
+  packageName: Essential Terrain Pack
+  packageVersion: 1.3.3
+  assetPath: Assets/_DLNK/Essential Terrain Pack/Scenes/ETP Assets/LightingData.asset
+  uploadId: 778292

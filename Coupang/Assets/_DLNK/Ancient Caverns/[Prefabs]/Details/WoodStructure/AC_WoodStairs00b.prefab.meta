@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 605cdec33dce10b4c936ec5e6b246ce9
+timeCreated: 1510440935
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Details/WoodStructure/AC_WoodStairs00b.prefab
+  uploadId: 571538

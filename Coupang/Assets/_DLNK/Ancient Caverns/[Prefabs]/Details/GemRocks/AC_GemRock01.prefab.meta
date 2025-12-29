@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 42db9705bbac5824fa4f568b309d4127
+timeCreated: 1510085187
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Details/GemRocks/AC_GemRock01.prefab
+  uploadId: 571538

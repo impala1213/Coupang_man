@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: ee9425be6aff9b046ae9a43f08e619bc
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/_DLNK Source/_DLNK Libraries/[dlnk Shader Library]/[ASE
+    Shaders]/AdvancedParallax.shader
+  uploadId: 571538

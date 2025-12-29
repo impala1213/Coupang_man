@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 0eb94edb26ff57540a398d77c4ae0117
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 41521
+  packageName: Essential Terrain Pack
+  packageVersion: 1.3.3
+  assetPath: Assets/_DLNK/Essential Terrain Pack/Source/Materials/FXs/Water/ParticleDustWater.mat
+  uploadId: 778292

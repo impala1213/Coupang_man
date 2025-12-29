@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 5e86f6301fc851344a751dc68d511ad6
+timeCreated: 1509645535
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Essential Rooms/AC_Corridor00b.prefab
+  uploadId: 571538

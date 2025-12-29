@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 429473cac2e9025498dc346234a7b9d3
+timeCreated: 1510085152
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Details/Fungus/AC_Fungus04b.prefab
+  uploadId: 571538

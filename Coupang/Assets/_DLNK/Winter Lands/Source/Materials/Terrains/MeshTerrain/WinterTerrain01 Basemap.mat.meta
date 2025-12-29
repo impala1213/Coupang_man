@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: a624f5a4296f9bc47bee019b8eeaa945
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 247672
+  packageName: Winter Lands
+  packageVersion: 1.0
+  assetPath: Assets/_DLNK/Winter Lands/Source/Materials/Terrains/MeshTerrain/WinterTerrain01
+    Basemap.mat
+  uploadId: 565140

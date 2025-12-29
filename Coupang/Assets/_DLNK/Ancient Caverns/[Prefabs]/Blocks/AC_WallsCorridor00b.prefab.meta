@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 89dad1321dd7a5a479e3231a459a1c3b
+timeCreated: 1509635500
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Blocks/AC_WallsCorridor00b.prefab
+  uploadId: 571538

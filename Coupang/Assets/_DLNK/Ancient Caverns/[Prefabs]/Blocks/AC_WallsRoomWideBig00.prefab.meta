@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 323f2f31f62aa164b9b2f8f53968fc20
+timeCreated: 1509635554
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Blocks/AC_WallsRoomWideBig00.prefab
+  uploadId: 571538

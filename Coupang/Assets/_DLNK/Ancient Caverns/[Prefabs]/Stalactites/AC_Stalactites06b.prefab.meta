@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: f3f24296649e4f64c89e646a2d68064a
+timeCreated: 1509741335
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Stalactites/AC_Stalactites06b.prefab
+  uploadId: 571538

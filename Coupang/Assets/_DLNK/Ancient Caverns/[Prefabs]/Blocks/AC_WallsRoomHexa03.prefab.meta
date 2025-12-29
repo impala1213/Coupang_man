@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 80fd9fb3dfde6854596189dbabc1236a
+timeCreated: 1509635541
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Blocks/AC_WallsRoomHexa03.prefab
+  uploadId: 571538

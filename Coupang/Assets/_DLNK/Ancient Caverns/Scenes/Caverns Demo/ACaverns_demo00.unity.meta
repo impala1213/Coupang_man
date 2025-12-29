@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 60b4d50c4583da145a4b90bb75bace2f
+timeCreated: 1509484271
+licenseType: Store
+DefaultImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/Scenes/Caverns Demo/ACaverns_demo00.unity
+  uploadId: 571538

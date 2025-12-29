@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 17ebba74ec0d8cd4c8d9a7911fe38ff9
+timeCreated: 1509574220
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/Source/Materials/Blocks/WallsRoomEndSmall00_00.mat
+  uploadId: 571538

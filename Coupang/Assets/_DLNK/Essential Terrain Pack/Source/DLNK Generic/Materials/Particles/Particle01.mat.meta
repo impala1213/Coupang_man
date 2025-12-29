@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: d803dcaa94faa11469b355cc3883cbf7
+timeCreated: 1438216963
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 41521
+  packageName: Essential Terrain Pack
+  packageVersion: 1.3.3
+  assetPath: Assets/_DLNK/Essential Terrain Pack/Source/DLNK Generic/Materials/Particles/Particle01.mat
+  uploadId: 778292

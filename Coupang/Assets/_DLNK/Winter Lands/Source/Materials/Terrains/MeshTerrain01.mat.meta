@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: d81e5920944c6d64a988ec7110999e7e
+timeCreated: 1426357176
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 247672
+  packageName: Winter Lands
+  packageVersion: 1.0
+  assetPath: Assets/_DLNK/Winter Lands/Source/Materials/Terrains/MeshTerrain01.mat
+  uploadId: 565140

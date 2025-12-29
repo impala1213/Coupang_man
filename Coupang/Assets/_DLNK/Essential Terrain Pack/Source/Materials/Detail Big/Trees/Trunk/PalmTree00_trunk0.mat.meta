@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: d30ecd517f841ef46a8909036aa0ef7c
+timeCreated: 1532633919
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 41521
+  packageName: Essential Terrain Pack
+  packageVersion: 1.3.3
+  assetPath: Assets/_DLNK/Essential Terrain Pack/Source/Materials/Detail Big/Trees/Trunk/PalmTree00_trunk0.mat
+  uploadId: 778292

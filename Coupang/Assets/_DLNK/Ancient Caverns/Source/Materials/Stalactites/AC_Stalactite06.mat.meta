@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: ee4f01eb6b9689247a2df29db6e75516
+timeCreated: 1509725159
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/Source/Materials/Stalactites/AC_Stalactite06.mat
+  uploadId: 571538

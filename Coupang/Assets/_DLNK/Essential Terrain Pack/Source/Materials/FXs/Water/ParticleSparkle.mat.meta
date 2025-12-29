@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 835a61bb76a70c340a8652b461a20404
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 41521
+  packageName: Essential Terrain Pack
+  packageVersion: 1.3.3
+  assetPath: Assets/_DLNK/Essential Terrain Pack/Source/Materials/FXs/Water/ParticleSparkle.mat
+  uploadId: 778292

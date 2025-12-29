@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 0bd6cdecf8dfd8043991392385eafc09
+timeCreated: 1509574220
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/Source/Materials/Blocks/WallsCorridor01_00.mat
+  uploadId: 571538

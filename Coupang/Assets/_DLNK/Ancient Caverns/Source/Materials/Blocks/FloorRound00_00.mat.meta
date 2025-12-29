@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 51fd5698577c5834b8dad1a8c2746e99
+timeCreated: 1509574220
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/Source/Materials/Blocks/FloorRound00_00.mat
+  uploadId: 571538

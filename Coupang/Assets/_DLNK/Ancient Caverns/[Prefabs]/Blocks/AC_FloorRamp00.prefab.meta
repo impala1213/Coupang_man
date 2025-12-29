@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: d269a066ca4675949aa0de15f0eeb817
+timeCreated: 1509635450
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Blocks/AC_FloorRamp00.prefab
+  uploadId: 571538

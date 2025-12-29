@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 4534db7363a585d46b1081c15774ea96
+timeCreated: 1510428278
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Details/AC_Chain00.prefab
+  uploadId: 571538

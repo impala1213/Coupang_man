@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 72e4c78a8fa1b6e4baf2f636fdc7c4fd
+timeCreated: 1510163617
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Blocks/Carved/AC_CarvedBlock01.prefab
+  uploadId: 571538

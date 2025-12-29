@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: e789f3298b1fb184fa208fff62247441
+timeCreated: 1509811302
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Rocks/AC_RockPile01.prefab
+  uploadId: 571538

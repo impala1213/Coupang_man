@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 289b658d99e1d7c468cbfe38c71168bd
+timeCreated: 1509645638
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Essential Rooms/AC_Ramp03.prefab
+  uploadId: 571538

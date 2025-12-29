@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 576dfbeaaf538c343979fafb93322b6e
+timeCreated: 1509645794
+licenseType: Store
+NativeFormatImporter:
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 105425
+  packageName: Ancient Caverns
+  packageVersion: 1.0.5
+  assetPath: Assets/_DLNK/Ancient Caverns/[Prefabs]/Essential Rooms/AC_BigRoom00b.prefab
+  uploadId: 571538

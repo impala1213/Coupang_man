@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 331f4cd1857fbac48a516b2f518ab1ab
+timeCreated: 1439760104
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 41521
+  packageName: Essential Terrain Pack
+  packageVersion: 1.3.3
+  assetPath: Assets/_DLNK/Essential Terrain Pack/Source/Materials/FXs/Clouds/Clouds1/ETP_Cloud_03.mat
+  uploadId: 778292

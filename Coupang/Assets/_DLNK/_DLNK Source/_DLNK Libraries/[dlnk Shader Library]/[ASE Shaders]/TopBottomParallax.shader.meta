@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 747a7b23647ddeb4ab0302fbf6998aca
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 41521
+  packageName: Essential Terrain Pack
+  packageVersion: 1.3.3
+  assetPath: Assets/_DLNK/_DLNK Source/_DLNK Libraries/[dlnk Shader Library]/[ASE
+    Shaders]/TopBottomParallax.shader
+  uploadId: 778292
