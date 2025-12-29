@@ -1,0 +1,101 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88fc7dc43209a6b4ab8e9964efdc770c, type: 3}
+  m_Name: Cave
+  m_EditorClassIdentifier: 
+  id: Feature
+  contentType: 1
+  prefab: {fileID: 0}
+  sceneName: 
+  spawnContent: 1
+  contentOffset: {x: 0, y: 0, z: 0}
+  footprintShape: 0
+  footprintRadius: 12
+  footprintBoxSize: {x: 20, y: 20}
+  flattenFalloff: 6
+  applyFlattenToBaseTerrain: 1
+  flattenTargetMode: 0
+  flattenFixedWorldY: 0
+  flattenHeightOffset: 0
+  minRadiusFromCenter: 0
+  maxRadiusFromCenter: 99999
+  avoidLandingZone: 1
+  extraAvoidLandingRadius: 0
+  maxSlopeDegrees: 10
+  reservedPadding: 2
+  disableNoiseCavesInFootprint: 1
+  disablePathCavesInFootprint: 1
+  applyClearanceVolume: 1
+  clearanceSize: {x: 20, y: 10, z: 20}
+  clearanceCenterOffset: {x: 0, y: 5, z: 0}
+  applyFoundation: 1
+  foundationDepthVoxels: 2
+  debugDrawGizmos: 0
+  entrancePrefab: {fileID: 1520101757012638, guid: 080f5f1eaf3e25449be8c0878deacc9a, type: 3}
+  exitPrefab: {fileID: 1520101757012638, guid: daf3a675b60ac5f4aa520554845eff76, type: 3}
+  useExitPrefabAsStartPiece: 1
+  entranceOffset: {x: 0, y: 0, z: 0}
+  interiorPlacementMode: 1
+  interiorPlanarOffset: {x: 0, y: 0, z: 0}
+  interiorDepthBelowSurface: 220
+  interiorBaseOffset: {x: 0, y: -250, z: 0}
+  interiorInstanceSpacing: 220
+  maxRooms: 20
+  roomToCorridorProbability: 1
+  corridorContinueProbability: 0.35
+  corridorToRoomProbability: 0.75
+  maxCorridorChain: 2
+  capUnusedConnectors: 1
+  preventOverlaps: 1
+  overlapPadding: 0.25
+  touchEpsilon: 0.03
+  minConnectorSeparation: 0.5
+  placementRetriesPerConnector: 6
+  rooms:
+  - prefab: {fileID: 1364102185842748, guid: 71314f88373591a4ca1c5e22414e403d, type: 3}
+    weight: 1
+  - prefab: {fileID: 1344330576116888, guid: 576dfbeaaf538c343979fafb93322b6e, type: 3}
+    weight: 1
+  - prefab: {fileID: 1868908361447456, guid: a1d8f4c28491df54cb5f9f2fd523aa95, type: 3}
+    weight: 1
+  - prefab: {fileID: 1773071510578294, guid: 01cb61b25e0540f4da67e979acdcd308, type: 3}
+    weight: 1
+  - prefab: {fileID: 1709820422780786, guid: a0531ce8353ef1d4cba2bf67770f6b5d, type: 3}
+    weight: 1
+  - prefab: {fileID: 1012307545705156, guid: 7f06743dbd040554cbb80e3e330bfcb2, type: 3}
+    weight: 1
+  - prefab: {fileID: 1578744675297802, guid: cc332896250990b40b8a4e072fa64aff, type: 3}
+    weight: 1
+  - prefab: {fileID: 1445781887855610, guid: 0bfb1e8355753c843b5605ca687d010a, type: 3}
+    weight: 1
+  - prefab: {fileID: 7959171902434786483, guid: 5c01e3d7f6cdca648a8437c075cf792c, type: 3}
+    weight: 2
+  corridors:
+  - prefab: {fileID: 1986957815798288, guid: f5e5987ddcce9e14db56e14011dc8294, type: 3}
+    weight: 1
+  - prefab: {fileID: 1734532221039792, guid: 5e86f6301fc851344a751dc68d511ad6, type: 3}
+    weight: 1
+  - prefab: {fileID: 1647443822894434, guid: 6bf04cdd278c23d40a1624bf62029235, type: 3}
+    weight: 1
+  - prefab: {fileID: 1336854301128718, guid: 84b9f9cbfc8190f4099926ab11b28d0a, type: 3}
+    weight: 1
+  - prefab: {fileID: 1776249703674310, guid: 0684c0c7aaca7b1478a8a9bd2784394a, type: 3}
+    weight: 1
+  - prefab: {fileID: 1592915614444148, guid: 54b58153af0020d4fb5b6333f8fd099e, type: 3}
+    weight: 1
+  - prefab: {fileID: 1862376040755194, guid: 15a6eab0abd54db4980923de38e53148, type: 3}
+    weight: 1
+  - prefab: {fileID: 1444289899796494, guid: 7bbdaeec7070bee46a6471286919ebdd, type: 3}
+    weight: 1
+  - prefab: {fileID: 1260521758597716, guid: 289b658d99e1d7c468cbfe38c71168bd, type: 3}
+    weight: 1
+  caps: []

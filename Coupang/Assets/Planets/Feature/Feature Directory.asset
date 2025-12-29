@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d0258bdc851fb94e9802b21b4e8ace5, type: 3}
+  m_Name: Feature Directory
+  m_EditorClassIdentifier: 
+  entries:
+  - feature: {fileID: 11400000, guid: c40c7c0397cb7454ea9aba77405ced5a, type: 2}
+    weight: 0
+    minCount: 0
+    maxCount: 0
+  - feature: {fileID: 11400000, guid: 29881331a0a0ff0468ed06b3257485d9, type: 2}
+    weight: 1
+    minCount: 1
+    maxCount: 1
+  useTotalBudget: 1
+  minTotalInstances: 0
+  maxTotalInstances: 6
+  placementTriesPerInstance: 200
+  budgetFillMaxAttempts: 200
+  keepMarginFromBoundary: 1
+  boundaryMargin: 2
