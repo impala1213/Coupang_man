@@ -9,14 +9,16 @@ Material:
   m_PrefabAsset: {fileID: 0}
   m_Name: BigBrickWall
   m_Shader: {fileID: 4800000, guid: 516e1d638296ed84a8111eeac2e687e3, type: 3}
-  m_ValidKeywords: []
-  m_InvalidKeywords:
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords:
   - _DETAIL_MULX2
   - _EMISSION
+  - _NORMALMAP
+  m_InvalidKeywords:
   - _LIGHTWRAP_ON
   - _METALALPHAGLOSS_ON
   - _METALLICGLOSSMAP
-  - _NORMALMAP
   - _SPECULARIBL_ON
   - _USELOCALNORMALS_ON
   m_LightmapFlags: 1
@@ -25,6 +27,7 @@ Material:
   m_CustomRenderQueue: -1
   stringTagMap: {}
   disabledShaderPasses: []
+  m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
@@ -128,11 +131,24 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - unity_Lightmaps:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - unity_LightmapsInd:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - unity_ShadowMasks:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - Depth: 0
     - _AOBlendPower: 15.89
     - _AOPower: 0.14
+    - _AlphaCutoff: 0.5
     - _AmbientIBL: 0.33
     - _Ammount: 3.02
     - _BumpMix: 1
@@ -147,6 +163,7 @@ Material:
     - _DstBlend: 0
     - _EmissionLM: 0
     - _EmissionScaleUI: 0
+    - _EnvironmentReflections: 1
     - _Fresnel: 2
     - _GlossMapScale: 1
     - _Glossiness: 1
@@ -172,6 +189,9 @@ Material:
     - _OcclusionTop: 0.5
     - _Parallax: 0.0066
     - _Quality: 50
+    - _QueueControl: 0
+    - _QueueOffset: 0
+    - _ReceiveShadows: 1
     - _RimFresnel: 2.56
     - _RimPower: 0
     - _Shininess: 0
@@ -196,6 +216,7 @@ Material:
     - _TopTiling: 6.59
     - _UVMasterTiling: 1
     - _UVSec: 0
+    - _UVWorld: 0
     - _UpAOMult: 1
     - _UpAlbPower: 1
     - _UpGloss: 0
@@ -221,3 +242,4 @@ Material:
     - _UpColor: {r: 0.29974052, g: 0.64705884, b: 0.60394347, a: 1}
     - _node_8583: {r: 0.9264706, g: 0.04087368, b: 0.04087368, a: 1}
   m_BuildTextureStacks: []
+  m_AllowLocking: 1

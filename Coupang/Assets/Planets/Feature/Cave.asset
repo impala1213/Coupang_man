@@ -49,11 +49,14 @@ MonoBehaviour:
   interiorDepthBelowSurface: 220
   interiorBaseOffset: {x: 0, y: -250, z: 0}
   interiorInstanceSpacing: 220
-  maxRooms: 20
+  maxRooms: 15
   roomToCorridorProbability: 1
   corridorContinueProbability: 0.35
-  corridorToRoomProbability: 0.75
+  corridorToRoomProbability: 1
   maxCorridorChain: 2
+  useTerminalRooms: 0
+  corridorToTerminalRoomProbability: 1
+  terminalRooms: []
   capUnusedConnectors: 1
   preventOverlaps: 1
   overlapPadding: 0.25
@@ -61,10 +64,6 @@ MonoBehaviour:
   minConnectorSeparation: 0.5
   placementRetriesPerConnector: 6
   rooms:
-  - prefab: {fileID: 1364102185842748, guid: 71314f88373591a4ca1c5e22414e403d, type: 3}
-    weight: 1
-  - prefab: {fileID: 1344330576116888, guid: 576dfbeaaf538c343979fafb93322b6e, type: 3}
-    weight: 1
   - prefab: {fileID: 1868908361447456, guid: a1d8f4c28491df54cb5f9f2fd523aa95, type: 3}
     weight: 1
   - prefab: {fileID: 1773071510578294, guid: 01cb61b25e0540f4da67e979acdcd308, type: 3}
@@ -73,12 +72,10 @@ MonoBehaviour:
     weight: 1
   - prefab: {fileID: 1012307545705156, guid: 7f06743dbd040554cbb80e3e330bfcb2, type: 3}
     weight: 1
-  - prefab: {fileID: 1578744675297802, guid: cc332896250990b40b8a4e072fa64aff, type: 3}
-    weight: 1
   - prefab: {fileID: 1445781887855610, guid: 0bfb1e8355753c843b5605ca687d010a, type: 3}
     weight: 1
   - prefab: {fileID: 7959171902434786483, guid: 5c01e3d7f6cdca648a8437c075cf792c, type: 3}
-    weight: 2
+    weight: 5
   corridors:
   - prefab: {fileID: 1986957815798288, guid: f5e5987ddcce9e14db56e14011dc8294, type: 3}
     weight: 1
@@ -91,11 +88,15 @@ MonoBehaviour:
   - prefab: {fileID: 1776249703674310, guid: 0684c0c7aaca7b1478a8a9bd2784394a, type: 3}
     weight: 1
   - prefab: {fileID: 1592915614444148, guid: 54b58153af0020d4fb5b6333f8fd099e, type: 3}
-    weight: 1
+    weight: 5
   - prefab: {fileID: 1862376040755194, guid: 15a6eab0abd54db4980923de38e53148, type: 3}
     weight: 1
   - prefab: {fileID: 1444289899796494, guid: 7bbdaeec7070bee46a6471286919ebdd, type: 3}
     weight: 1
   - prefab: {fileID: 1260521758597716, guid: 289b658d99e1d7c468cbfe38c71168bd, type: 3}
     weight: 1
-  caps: []
+  - prefab: {fileID: 2367409514110539050, guid: 30ff0a747df4051489f5fcb971580e2c, type: 3}
+    weight: 1
+  caps:
+  - prefab: {fileID: 1579448928309004, guid: c537cb6294a8b1f468abf0fefef22cd7, type: 3}
+    weight: 1

@@ -2,14 +2,18 @@
 using UnityEngine;
 
 /// <summary>
-/// Generates a modular cave interior by stitching together pre-authored room/corridor/cap prefabs.
+/// Modular cave generator (connector-based).
 ///
-/// Authoring expectations:
-/// - Each prefab should have CaveConnector components on child transforms.
-/// - Connector transforms' +Z axis (Transform.forward, blue arrow) should point OUTWARD from the piece.
+/// Connector rule:
+/// - Connector outward direction = +Z axis (Transform.forward).
 /// - Two connectors connect when their connectorTag matches.
-/// - Corridors may have 2+ connectors (junctions). After attaching, ALL unused connectors (except the inbound) will be enqueued.
-/// - Terminal rooms are special end pieces: after attaching, their remaining connectors are force-closed (marked used).
+/// - Corridors may have 2+ connectors (junctions).
+/// - Every unused connector (isUsed == false) on PLACED pieces will be closed by a cap (guaranteed).
+///
+/// Critical fix:
+/// - Attempt pieces (instantiated and later Destroyed) must NEVER be treated as valid expansion/cap targets.
+/// - We mark ONLY successfully placed pieces with CavePlacedPiece(token).
+/// - Queue processing + final cap pass only considers connectors belonging to placed pieces with matching token.
 /// </summary>
 public static class CaveDungeonGenerator
 {
@@ -21,11 +25,7 @@ public static class CaveDungeonGenerator
         public Transform insideEntryPoint;
     }
 
-    private enum NodeKind
-    {
-        Room = 0,
-        Corridor = 1,
-    }
+    private enum NodeKind { Room = 0, Corridor = 1};
 
     private struct OpenSocket
     {
@@ -53,6 +53,10 @@ public static class CaveDungeonGenerator
         }
     }
 
+    // Alignment validation tolerances
+    private const float SNAP_EPSILON = 0.02f;     // 2cm
+    private const float ANGLE_EPSILON_DEG = 2.0f; // 2 degrees
+
     public static Result Generate(
         CaveFeatureDefinition def,
         Rng rng,
@@ -61,29 +65,28 @@ public static class CaveDungeonGenerator
         string instanceName = "Cave")
     {
         Result res = new Result();
-
-        if (def == null)
-            return res;
-
-        if (rng == null)
-            rng = new Rng(12345);
+        if (def == null) return res;
+        if (rng == null) rng = new Rng(12345);
 
         GameObject rootGO = new GameObject(instanceName);
         rootGO.transform.SetParent(parent, true);
         rootGO.transform.position = interiorOrigin;
         rootGO.transform.rotation = Quaternion.identity;
 
+        // Dungeon token (unique per run)
+        int dungeonToken = rootGO.GetInstanceID();
+
         CaveInstance inst = rootGO.AddComponent<CaveInstance>();
 
         List<OccupiedEntry> occupied = new List<OccupiedEntry>(64);
         Queue<OpenSocket> open = new Queue<OpenSocket>(64);
+        HashSet<CaveConnector> enqueued = new HashSet<CaveConnector>();
 
-        // 1) Spawn start piece
+        // 1) Start piece
         bool startedFromExitPrefab = def.useExitPrefabAsStartPiece && def.exitPrefab != null;
-
         if (startedFromExitPrefab)
         {
-            CaveConnector[] exitConns = def.exitPrefab.GetComponentsInChildren<CaveConnector>(true);
+            var exitConns = def.exitPrefab.GetComponentsInChildren<CaveConnector>(true);
             if (exitConns == null || exitConns.Length == 0)
             {
                 Debug.LogWarning("[CaveDungeonGenerator] exitPrefab is set as start piece, but it has no CaveConnector children. Falling back to random room start.");
@@ -104,9 +107,11 @@ public static class CaveDungeonGenerator
         startPiece.transform.localPosition = Vector3.zero;
         startPiece.transform.localRotation = Quaternion.identity;
 
+        // Mark placed
+        MarkPiecePlaced(startPiece.transform, dungeonToken);
+
         res.startPieceRoot = startPiece.transform;
 
-        // Entry point
         Transform entry = startPiece.transform.Find("EntryPoint");
         if (entry == null)
         {
@@ -116,10 +121,7 @@ public static class CaveDungeonGenerator
             ep.transform.localRotation = Quaternion.identity;
             entry = ep.transform;
         }
-
         inst.insideEntryPoint = entry;
-
-        int roomsPlaced = 1;
 
         if (def.preventOverlaps)
         {
@@ -130,7 +132,9 @@ public static class CaveDungeonGenerator
             }
         }
 
-        EnqueuePieceConnectors(startPiece, open, NodeKind.Room, 0);
+        EnqueuePieceConnectors(startPiece, open, enqueued, dungeonToken, NodeKind.Room, 0);
+
+        int roomsPlaced = 1;
 
         // 2) Expand
         int safetyIterations = 100000;
@@ -140,51 +144,46 @@ public static class CaveDungeonGenerator
         {
             OpenSocket s = open.Dequeue();
             CaveConnector from = s.connector;
+
             if (from == null) continue;
             if (from.isUsed) continue;
             if (!from.enabledForGeneration) continue;
 
-            // Room socket behavior
+            // ✅ Hard gate: only process connectors belonging to a placed piece for this dungeon token
+            if (!IsConnectorFromPlacedPiece(rootGO.transform, from, dungeonToken))
+                continue;
+
+            if (s.kind == NodeKind.Room && roomsPlaced >= Mathf.Max(1, def.maxRooms))
+            {
+                PlaceCapForce(def, rng.Split(91000 + iter), rootGO.transform, dungeonToken, from, occupied);
+                continue;
+            }
+
             if (s.kind == NodeKind.Room)
             {
-                // If we've hit max rooms, don't create more rooms. Just end (terminal/cap).
-                if (roomsPlaced >= Mathf.Max(1, def.maxRooms))
-                {
-                    TryEndWithTerminalOrCap(def, rng.Split(91000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
-                    continue;
-                }
-
-                // Start corridor chain from a room connector
                 if (rng.NextFloat(0f, 1f) > Mathf.Clamp01(def.roomToCorridorProbability))
                 {
-                    // End this socket (prefer terminal, otherwise cap)
-                    TryEndWithTerminalOrCap(def, rng.Split(92000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
+                    PlaceCapForce(def, rng.Split(92000 + iter), rootGO.transform, dungeonToken, from, occupied);
                     continue;
                 }
 
-                if (!TryAttachCorridor(def, rng.Split(10000 + iter), rootGO.transform, from, occupied,
-                        out List<CaveConnector> outs, out Transform corridorRoot))
+                if (!TryAttachCorridor(def, rng.Split(10000 + iter), rootGO.transform, dungeonToken, from, occupied,
+                        out List<CaveConnector> outs))
                 {
-                    // Can't place corridor; end here
-                    TryEndWithTerminalOrCap(def, rng.Split(93000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
+                    PlaceCapForce(def, rng.Split(93000 + iter), rootGO.transform, dungeonToken, from, occupied);
                     continue;
                 }
 
-                // Junction support: enqueue ALL remaining connectors as corridor sockets
                 if (outs != null)
                 {
                     for (int k = 0; k < outs.Count; k++)
-                    {
-                        CaveConnector oc = outs[k];
-                        if (oc != null && !oc.isUsed && oc.enabledForGeneration)
-                            open.Enqueue(new OpenSocket(oc, NodeKind.Corridor, 1));
-                    }
+                        EnqueueSocket(open, enqueued, rootGO.transform, dungeonToken, outs[k], NodeKind.Corridor, 1);
                 }
 
                 continue;
             }
 
-            // Corridor socket behavior
+            // Corridor socket: continue corridor vs spawn room vs cap
             float contP = Mathf.Clamp01(def.corridorContinueProbability);
             float toRoomP = Mathf.Clamp01(def.corridorToRoomProbability);
             if (contP + toRoomP > 1f)
@@ -197,14 +196,12 @@ public static class CaveDungeonGenerator
             float roll = rng.NextFloat(0f, 1f);
             bool canChain = s.corridorChainDepth < Mathf.Max(0, def.maxCorridorChain);
 
-            // Continue corridor
             if (canChain && roll < contP)
             {
-                if (!TryAttachCorridor(def, rng.Split(20000 + iter), rootGO.transform, from, occupied,
-                        out List<CaveConnector> outs, out Transform corridorRoot))
+                if (!TryAttachCorridor(def, rng.Split(20000 + iter), rootGO.transform, dungeonToken, from, occupied,
+                        out List<CaveConnector> outs))
                 {
-                    // End here
-                    TryEndWithTerminalOrCap(def, rng.Split(94000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
+                    PlaceCapForce(def, rng.Split(94000 + iter), rootGO.transform, dungeonToken, from, occupied);
                     continue;
                 }
 
@@ -212,49 +209,44 @@ public static class CaveDungeonGenerator
                 {
                     int nextDepth = s.corridorChainDepth + 1;
                     for (int k = 0; k < outs.Count; k++)
-                    {
-                        CaveConnector oc = outs[k];
-                        if (oc != null && !oc.isUsed && oc.enabledForGeneration)
-                            open.Enqueue(new OpenSocket(oc, NodeKind.Corridor, nextDepth));
-                    }
+                        EnqueueSocket(open, enqueued, rootGO.transform, dungeonToken, outs[k], NodeKind.Corridor, nextDepth);
                 }
 
                 continue;
             }
 
-            // Spawn a normal room at the end of corridor
             if (roll < contP + toRoomP && roomsPlaced < Mathf.Max(1, def.maxRooms))
             {
-                if (!TryAttachRoom(def, rng.Split(30000 + iter), rootGO.transform, from, occupied, out GameObject roomGO))
+                if (!TryAttachRoom(def, rng.Split(30000 + iter), rootGO.transform, dungeonToken, from, occupied, out GameObject roomGO))
                 {
-                    // If normal room fails, try terminal/cap
-                    TryEndWithTerminalOrCap(def, rng.Split(95000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
+                    PlaceCapForce(def, rng.Split(95000 + iter), rootGO.transform, dungeonToken, from, occupied);
                     continue;
                 }
 
                 roomsPlaced++;
-                EnqueuePieceConnectors(roomGO, open, NodeKind.Room, 0);
+                EnqueuePieceConnectors(roomGO, open, enqueued, dungeonToken, NodeKind.Room, 0);
                 continue;
             }
 
-            // Otherwise: end this branch (prefer terminal room, otherwise cap)
-            TryEndWithTerminalOrCap(def, rng.Split(96000 + iter), rootGO.transform, from, occupied, ref roomsPlaced);
+            PlaceCapForce(def, rng.Split(96000 + iter), rootGO.transform, dungeonToken, from, occupied);
         }
 
-        // 3) Close leftover connectors
-        if (def.capUnusedConnectors)
+        // 3) FINAL GUARANTEE PASS:
+        // Cap all unused connectors that belong to placed pieces.
+        CaveConnector[] all = rootGO.GetComponentsInChildren<CaveConnector>(true);
+        if (all != null)
         {
-            CaveConnector[] all = rootGO.GetComponentsInChildren<CaveConnector>(true);
             for (int i = 0; i < all.Length; i++)
             {
                 CaveConnector c = all[i];
                 if (c == null) continue;
-                if (c.isUsed) continue;
                 if (!c.enabledForGeneration) continue;
-                if (c.allowOpenEnd) continue;
+                if (c.isUsed) continue;
 
-                // Treat as "end": try terminal first, else cap
-                TryEndWithTerminalOrCap(def, rng.Split(97000 + i), rootGO.transform, c, occupied, ref roomsPlaced);
+                if (!IsConnectorFromPlacedPiece(rootGO.transform, c, dungeonToken))
+                    continue;
+
+                PlaceCapForce(def, rng.Split(97000 + i), rootGO.transform, dungeonToken, c, occupied);
             }
         }
 
@@ -264,46 +256,90 @@ public static class CaveDungeonGenerator
         return res;
     }
 
-    private static void EnqueuePieceConnectors(GameObject piece, Queue<OpenSocket> open, NodeKind kind, int corridorDepth)
+    // ─────────────────────────────────────────────────────────────
+    // Placed piece marking / filtering
+    // ─────────────────────────────────────────────────────────────
+
+    private static void MarkPiecePlaced(Transform pieceRoot, int token)
     {
-        if (piece == null)
+        if (pieceRoot == null) return;
+
+        CavePlacedPiece marker = pieceRoot.GetComponent<CavePlacedPiece>();
+        if (marker == null) marker = pieceRoot.gameObject.AddComponent<CavePlacedPiece>();
+        marker.MarkPlaced(token);
+    }
+
+    private static bool IsConnectorFromPlacedPiece(Transform dungeonRoot, CaveConnector c, int token)
+    {
+        if (dungeonRoot == null || c == null) return false;
+
+        Transform pieceRoot = GetTopLevelPieceRoot(dungeonRoot, c.transform);
+        if (pieceRoot == null) return false;
+
+        CavePlacedPiece marker = pieceRoot.GetComponent<CavePlacedPiece>();
+        return marker != null && marker.IsPlacedFor(token);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Frontier enqueue (dedupe + placed filter)
+    // ─────────────────────────────────────────────────────────────
+
+    private static void EnqueueSocket(
+        Queue<OpenSocket> open,
+        HashSet<CaveConnector> enqueued,
+        Transform dungeonRoot,
+        int token,
+        CaveConnector c,
+        NodeKind kind,
+        int corridorDepth)
+    {
+        if (c == null) return;
+        if (c.isUsed) return;
+        if (!c.enabledForGeneration) return;
+
+        // ✅ Only enqueue connectors from placed pieces
+        if (!IsConnectorFromPlacedPiece(dungeonRoot, c, token))
             return;
+
+        if (!enqueued.Add(c)) return;
+        open.Enqueue(new OpenSocket(c, kind, corridorDepth));
+    }
+
+    private static void EnqueuePieceConnectors(
+        GameObject piece,
+        Queue<OpenSocket> open,
+        HashSet<CaveConnector> enqueued,
+        int token,
+        NodeKind kind,
+        int corridorDepth)
+    {
+        if (piece == null) return;
 
         CaveConnector[] connectors = piece.GetComponentsInChildren<CaveConnector>(true);
-        if (connectors == null)
-            return;
+        if (connectors == null) return;
 
         for (int i = 0; i < connectors.Length; i++)
-        {
-            CaveConnector c = connectors[i];
-            if (c == null) continue;
-            if (c.isUsed) continue;
-            if (!c.enabledForGeneration) continue;
-
-            open.Enqueue(new OpenSocket(c, kind, corridorDepth));
-        }
+            EnqueueSocket(open, enqueued, piece.transform.parent, token, connectors[i], kind, corridorDepth);
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Weighted selection
+    // ─────────────────────────────────────────────────────────────
 
     private static GameObject PickWeighted(CaveFeatureDefinition.WeightedPrefab[] list, Rng rng)
     {
-        if (list == null || list.Length == 0 || rng == null)
-            return null;
+        if (list == null || list.Length == 0 || rng == null) return null;
 
         float total = 0f;
         for (int i = 0; i < list.Length; i++)
-        {
-            if (list[i].prefab == null)
-                continue;
-
-            total += Mathf.Max(0f, list[i].weight);
-        }
+            if (list[i].prefab != null)
+                total += Mathf.Max(0f, list[i].weight);
 
         if (total <= 0f)
         {
             for (int i = 0; i < list.Length; i++)
                 if (list[i].prefab != null)
                     return list[i].prefab;
-
             return null;
         }
 
@@ -328,50 +364,128 @@ public static class CaveDungeonGenerator
         return null;
     }
 
+    private static List<GameObject> BuildWeightedPrefabOrder(CaveFeatureDefinition.WeightedPrefab[] list, Rng rng)
+    {
+        List<GameObject> order = new List<GameObject>();
+        if (list == null || list.Length == 0 || rng == null) return order;
+
+        List<(float key, GameObject prefab)> tmp = new List<(float, GameObject)>(list.Length);
+
+        for (int i = 0; i < list.Length; i++)
+        {
+            GameObject p = list[i].prefab;
+            if (p == null) continue;
+
+            float w = Mathf.Max(0.0001f, list[i].weight);
+            float u = Mathf.Clamp(rng.NextFloat(0.000001f, 0.999999f), 0.000001f, 0.999999f);
+            float key = -Mathf.Log(u) / w;
+            tmp.Add((key, p));
+        }
+
+        tmp.Sort((a, b) => a.key.CompareTo(b.key));
+        for (int i = 0; i < tmp.Count; i++)
+            order.Add(tmp[i].prefab);
+
+        return order;
+    }
+
+    private static void ShuffleInPlace<T>(List<T> list, Rng rng)
+    {
+        if (list == null || rng == null) return;
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = rng.NextInt(0, i + 1);
+            T tmp = list[i];
+            list[i] = list[j];
+            list[j] = tmp;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Attach corridor / room
+    // ─────────────────────────────────────────────────────────────
+
     private static bool TryAttachCorridor(
         CaveFeatureDefinition def,
         Rng rng,
         Transform dungeonRoot,
+        int token,
         CaveConnector from,
         List<OccupiedEntry> occupied,
-        out List<CaveConnector> outConnectors,
-        out Transform corridorRoot)
+        out List<CaveConnector> outConnectors)
     {
         outConnectors = null;
-        corridorRoot = null;
+        if (def == null || rng == null || dungeonRoot == null || from == null) return false;
 
-        if (def == null || rng == null || dungeonRoot == null || from == null)
-            return false;
+        List<GameObject> prefabOrder = BuildWeightedPrefabOrder(def.corridors, rng.Split(1001));
+        if (prefabOrder.Count == 0) return false;
 
-        int tries = Mathf.Max(1, def.placementRetriesPerConnector);
+        int maxPrefabTries = Mathf.Max(1, def.placementRetriesPerConnector);
+        int prefabTries = Mathf.Min(maxPrefabTries, prefabOrder.Count);
 
-        for (int attempt = 0; attempt < tries; attempt++)
+        for (int p = 0; p < prefabTries; p++)
         {
-            GameObject corridorPrefab = PickWeighted(def.corridors, rng.Split(1100 + attempt * 17));
-            if (corridorPrefab == null)
-                return false;
+            GameObject corridorPrefab = prefabOrder[p];
+            if (corridorPrefab == null) continue;
 
             GameObject corridor = Object.Instantiate(corridorPrefab, dungeonRoot);
-            corridor.name = $"Corridor_Attempt_{attempt}";
+            corridor.name = $"Corridor_Attempt_{p}";
 
-            // Pick inbound connector from tag-matching candidates (corridor can have 2+ connectors)
-            CaveConnector inConn;
-            if (!TryPickRoomConnector(corridor, from.connectorTag, rng.Split(2100 + attempt * 19), out inConn))
+            CaveConnector[] allConns = corridor.GetComponentsInChildren<CaveConnector>(true);
+            if (allConns == null || allConns.Length < 1)
             {
                 Object.Destroy(corridor);
                 continue;
             }
 
-            AlignConnectorTo(inConn.transform, corridor.transform, from.transform);
-
-            if (def.preventOverlaps)
+            List<CaveConnector> inboundCandidates = new List<CaveConnector>(allConns.Length);
+            for (int i = 0; i < allConns.Length; i++)
             {
-                if (WouldOverlapOrMeet(def, dungeonRoot, corridor, from, occupied))
-                {
-                    Object.Destroy(corridor);
-                    continue;
-                }
+                CaveConnector c = allConns[i];
+                if (c == null) continue;
+                if (!c.enabledForGeneration) continue;
+                if (c.isUsed) continue;
+                if (c.connectorTag != from.connectorTag) continue;
+                inboundCandidates.Add(c);
             }
+
+            if (inboundCandidates.Count == 0)
+            {
+                Object.Destroy(corridor);
+                continue;
+            }
+
+            ShuffleInPlace(inboundCandidates, rng.Split(2001 + p * 13));
+
+            bool success = false;
+            CaveConnector inConn = null;
+
+            for (int k = 0; k < inboundCandidates.Count; k++)
+            {
+                inConn = inboundCandidates[k];
+                if (inConn == null) continue;
+
+                corridor.transform.localPosition = Vector3.zero;
+                corridor.transform.localRotation = Quaternion.identity;
+
+                if (!TryAlignConnectorTo(inConn.transform, corridor.transform, from.transform))
+                    continue;
+
+                if (def.preventOverlaps && WouldOverlapOrMeet(def, dungeonRoot, corridor, from, occupied))
+                    continue;
+
+                success = true;
+                break;
+            }
+
+            if (!success)
+            {
+                Object.Destroy(corridor);
+                continue;
+            }
+
+            // ✅ Now it's truly placed
+            MarkPiecePlaced(corridor.transform, token);
 
             from.MarkUsed();
             inConn.MarkUsed();
@@ -385,26 +499,19 @@ public static class CaveDungeonGenerator
                 }
             }
 
-            // Junction support: return ALL unused connectors except inbound
-            CaveConnector[] all = corridor.GetComponentsInChildren<CaveConnector>(true);
-            List<CaveConnector> outs = new List<CaveConnector>(all != null ? all.Length : 0);
-
-            if (all != null)
+            // Return all remaining connectors (junction support)
+            List<CaveConnector> outs = new List<CaveConnector>(allConns.Length);
+            for (int i = 0; i < allConns.Length; i++)
             {
-                for (int i = 0; i < all.Length; i++)
-                {
-                    CaveConnector c = all[i];
-                    if (c == null) continue;
-                    if (c == inConn) continue;
-                    if (!c.enabledForGeneration) continue;
-                    if (c.isUsed) continue;
-
-                    outs.Add(c);
-                }
+                CaveConnector c = allConns[i];
+                if (c == null) continue;
+                if (c == inConn) continue;
+                if (!c.enabledForGeneration) continue;
+                if (c.isUsed) continue;
+                outs.Add(c);
             }
 
             outConnectors = outs;
-            corridorRoot = corridor.transform;
             return true;
         }
 
@@ -415,43 +522,83 @@ public static class CaveDungeonGenerator
         CaveFeatureDefinition def,
         Rng rng,
         Transform dungeonRoot,
+        int token,
         CaveConnector from,
         List<OccupiedEntry> occupied,
         out GameObject roomGO)
     {
         roomGO = null;
+        if (def == null || rng == null || dungeonRoot == null || from == null) return false;
 
-        if (def == null || rng == null || dungeonRoot == null || from == null)
-            return false;
+        List<GameObject> prefabOrder = BuildWeightedPrefabOrder(def.rooms, rng.Split(3001));
+        if (prefabOrder.Count == 0) return false;
 
-        int tries = Mathf.Max(1, def.placementRetriesPerConnector);
+        int maxPrefabTries = Mathf.Max(1, def.placementRetriesPerConnector);
+        int prefabTries = Mathf.Min(maxPrefabTries, prefabOrder.Count);
 
-        for (int attempt = 0; attempt < tries; attempt++)
+        for (int p = 0; p < prefabTries; p++)
         {
-            GameObject roomPrefab = PickWeighted(def.rooms, rng.Split(3100 + attempt * 23));
-            if (roomPrefab == null)
-                return false;
+            GameObject roomPrefab = prefabOrder[p];
+            if (roomPrefab == null) continue;
 
             GameObject room = Object.Instantiate(roomPrefab, dungeonRoot);
-            room.name = $"Room_Attempt_{attempt}";
+            room.name = $"Room_Attempt_{p}";
 
-            CaveConnector inConn;
-            if (!TryPickRoomConnector(room, from.connectorTag, rng.Split(4100 + attempt * 29), out inConn))
+            CaveConnector[] conns = room.GetComponentsInChildren<CaveConnector>(true);
+            if (conns == null || conns.Length == 0)
             {
                 Object.Destroy(room);
                 continue;
             }
 
-            AlignConnectorTo(inConn.transform, room.transform, from.transform);
-
-            if (def.preventOverlaps)
+            List<CaveConnector> candidates = new List<CaveConnector>(conns.Length);
+            for (int i = 0; i < conns.Length; i++)
             {
-                if (WouldOverlapOrMeet(def, dungeonRoot, room, from, occupied))
-                {
-                    Object.Destroy(room);
-                    continue;
-                }
+                CaveConnector c = conns[i];
+                if (c == null) continue;
+                if (!c.enabledForGeneration) continue;
+                if (c.isUsed) continue;
+                if (c.connectorTag != from.connectorTag) continue;
+                candidates.Add(c);
             }
+
+            if (candidates.Count == 0)
+            {
+                Object.Destroy(room);
+                continue;
+            }
+
+            ShuffleInPlace(candidates, rng.Split(4001 + p * 17));
+
+            bool success = false;
+            CaveConnector inConn = null;
+
+            for (int k = 0; k < candidates.Count; k++)
+            {
+                inConn = candidates[k];
+                if (inConn == null) continue;
+
+                room.transform.localPosition = Vector3.zero;
+                room.transform.localRotation = Quaternion.identity;
+
+                if (!TryAlignConnectorTo(inConn.transform, room.transform, from.transform))
+                    continue;
+
+                if (def.preventOverlaps && WouldOverlapOrMeet(def, dungeonRoot, room, from, occupied))
+                    continue;
+
+                success = true;
+                break;
+            }
+
+            if (!success)
+            {
+                Object.Destroy(room);
+                continue;
+            }
+
+            // ✅ Now it's truly placed
+            MarkPiecePlaced(room.transform, token);
 
             from.MarkUsed();
             inConn.MarkUsed();
@@ -472,123 +619,206 @@ public static class CaveDungeonGenerator
         return false;
     }
 
-    private static bool TryAttachTerminalRoom(
+    // ─────────────────────────────────────────────────────────────
+    // CAP (guaranteed close) - only on placed connectors
+    // ─────────────────────────────────────────────────────────────
+
+    private static void PlaceCapForce(
         CaveFeatureDefinition def,
         Rng rng,
         Transform dungeonRoot,
-        CaveConnector from,
-        List<OccupiedEntry> occupied,
-        out GameObject terminalGO)
+        int token,
+        CaveConnector target,
+        List<OccupiedEntry> occupied)
     {
-        terminalGO = null;
+        if (def == null || rng == null || dungeonRoot == null || target == null) return;
+        if (target.isUsed) return;
 
-        if (def == null || rng == null || dungeonRoot == null || from == null)
-            return false;
+        // ✅ Only cap placed connectors
+        if (!IsConnectorFromPlacedPiece(dungeonRoot, target, token))
+            return;
 
-        if (!def.useTerminalRooms)
-            return false;
+        if (TryPlaceCapInternal(def, rng.Split(70000), dungeonRoot, token, target, occupied, ignoreOverlapAndMeeting: false))
+            return;
 
-        if (def.terminalRooms == null || def.terminalRooms.Length == 0)
-            return false;
+        if (TryPlaceCapInternal(def, rng.Split(70100), dungeonRoot, token, target, occupied, ignoreOverlapAndMeeting: true))
+            return;
 
-        float p = Mathf.Clamp01(def.corridorToTerminalRoomProbability);
-        if (p <= 0f)
-            return false;
+        // Fallback: block it anyway (still only for placed connectors)
+        CreateFallbackCap(dungeonRoot, target);
+        target.MarkUsed();
+    }
 
-        if (rng.NextFloat(0f, 1f) > p)
-            return false;
+    private static bool TryPlaceCapInternal(
+        CaveFeatureDefinition def,
+        Rng rng,
+        Transform dungeonRoot,
+        int token,
+        CaveConnector target,
+        List<OccupiedEntry> occupied,
+        bool ignoreOverlapAndMeeting)
+    {
+        List<GameObject> prefabOrder = BuildWeightedPrefabOrder(def.caps, rng.Split(7001));
+        if (prefabOrder.Count == 0) return false;
 
-        int tries = Mathf.Max(1, def.placementRetriesPerConnector);
+        int maxPrefabTries = Mathf.Max(1, def.placementRetriesPerConnector);
+        int prefabTries = Mathf.Min(maxPrefabTries, prefabOrder.Count);
 
-        for (int attempt = 0; attempt < tries; attempt++)
+        for (int p = 0; p < prefabTries; p++)
         {
-            GameObject termPrefab = PickWeighted(def.terminalRooms, rng.Split(6100 + attempt * 31));
-            if (termPrefab == null)
-                return false;
+            GameObject capPrefab = prefabOrder[p];
+            if (capPrefab == null) continue;
 
-            GameObject term = Object.Instantiate(termPrefab, dungeonRoot);
-            term.name = $"TerminalRoom_Attempt_{attempt}";
+            GameObject cap = Object.Instantiate(capPrefab, dungeonRoot);
+            cap.name = ignoreOverlapAndMeeting ? $"Cap_Force_Attempt_{p}" : $"Cap_Attempt_{p}";
 
-            CaveConnector inConn;
-            if (!TryPickRoomConnector(term, from.connectorTag, rng.Split(7100 + attempt * 37), out inConn))
+            CaveConnector[] conns = cap.GetComponentsInChildren<CaveConnector>(true);
+            if (conns == null || conns.Length == 0)
             {
-                Object.Destroy(term);
+                Object.Destroy(cap);
                 continue;
             }
 
-            AlignConnectorTo(inConn.transform, term.transform, from.transform);
-
-            if (def.preventOverlaps)
+            List<CaveConnector> candidates = new List<CaveConnector>(conns.Length);
+            for (int i = 0; i < conns.Length; i++)
             {
-                if (WouldOverlapOrMeet(def, dungeonRoot, term, from, occupied))
-                {
-                    Object.Destroy(term);
-                    continue;
-                }
+                CaveConnector c = conns[i];
+                if (c == null) continue;
+                if (!c.enabledForGeneration) continue;
+                if (c.isUsed) continue;
+                if (c.connectorTag != target.connectorTag) continue;
+                candidates.Add(c);
             }
 
-            from.MarkUsed();
-            inConn.MarkUsed();
+            if (candidates.Count == 0)
+            {
+                Object.Destroy(cap);
+                continue;
+            }
+
+            ShuffleInPlace(candidates, rng.Split(7101 + p * 11));
+
+            CaveConnector capConn = null;
+            bool aligned = false;
+
+            for (int k = 0; k < candidates.Count; k++)
+            {
+                capConn = candidates[k];
+                if (capConn == null) continue;
+
+                cap.transform.localPosition = Vector3.zero;
+                cap.transform.localRotation = Quaternion.identity;
+
+                if (!TryAlignConnectorTo(capConn.transform, cap.transform, target.transform))
+                    continue;
+
+                if (!ignoreOverlapAndMeeting && def.preventOverlaps)
+                {
+                    if (WouldOverlapOrMeet(def, dungeonRoot, cap, target, occupied))
+                        continue;
+                }
+
+                aligned = true;
+                break;
+            }
+
+            if (!aligned)
+            {
+                Object.Destroy(cap);
+                continue;
+            }
+
+            // ✅ Now it's truly placed
+            MarkPiecePlaced(cap.transform, token);
+
+            target.MarkUsed();
+            capConn.MarkUsed();
 
             if (def.preventOverlaps)
             {
-                if (TryComputeLocalBounds(dungeonRoot, term, out Bounds b))
+                if (TryComputeLocalBounds(dungeonRoot, cap, out Bounds b))
                 {
                     NormalizeBounds(ref b, def);
-                    occupied.Add(new OccupiedEntry(b, term.transform));
+                    occupied.Add(new OccupiedEntry(b, cap.transform));
                 }
             }
 
-            // Terminal room should not expand: force-close any remaining connectors on this piece
-            CaveConnector[] all = term.GetComponentsInChildren<CaveConnector>(true);
-            if (all != null)
-            {
-                for (int i = 0; i < all.Length; i++)
-                {
-                    CaveConnector c = all[i];
-                    if (c == null) continue;
-                    if (!c.enabledForGeneration) continue;
-                    if (c.allowOpenEnd) continue;
-
-                    // Mark used so generator won't expand from it later
-                    c.MarkUsed();
-                }
-            }
-
-            terminalGO = term;
+            // Close all connectors on cap to prevent cap creating more caps
+            CloseAllConnectorsOnPiece(cap.transform);
+            cap.name = ignoreOverlapAndMeeting ? $"Cap_Force_{p}" : $"Cap_{p}";
             return true;
         }
 
         return false;
     }
 
-    private static void TryEndWithTerminalOrCap(
-        CaveFeatureDefinition def,
-        Rng rng,
-        Transform dungeonRoot,
-        CaveConnector target,
-        List<OccupiedEntry> occupied,
-        ref int roomsPlaced)
+    private static void CloseAllConnectorsOnPiece(Transform pieceRoot)
     {
-        if (def == null || rng == null || dungeonRoot == null || target == null)
-            return;
+        if (pieceRoot == null) return;
 
-        if (target.isUsed)
-            return;
+        CaveConnector[] all = pieceRoot.GetComponentsInChildren<CaveConnector>(true);
+        if (all == null) return;
 
-        // If we can still place rooms, try terminal first
-        if (roomsPlaced < Mathf.Max(1, def.maxRooms))
+        for (int i = 0; i < all.Length; i++)
         {
-            if (TryAttachTerminalRoom(def, rng.Split(80100), dungeonRoot, target, occupied, out GameObject terminalGO))
-            {
-                roomsPlaced++;
-                return;
-            }
+            CaveConnector c = all[i];
+            if (c == null) continue;
+            if (!c.enabledForGeneration) continue;
+            if (!c.isUsed) c.MarkUsed();
+        }
+    }
+
+    private static void CreateFallbackCap(Transform dungeonRoot, CaveConnector target)
+    {
+        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = "GeneratedFallbackCap";
+        go.transform.SetParent(dungeonRoot, true);
+
+        Vector3 outward = target.transform.forward.normalized;
+        Quaternion rot = Quaternion.LookRotation(-outward, target.transform.up);
+        go.transform.SetPositionAndRotation(target.transform.position + (-outward) * 0.05f, rot);
+        go.transform.localScale = new Vector3(1.2f, 1.2f, 0.2f);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // ✅ Alignment (+Z outward) - scale-safe
+    // ─────────────────────────────────────────────────────────────
+
+    private static bool TryAlignConnectorTo(Transform sourceConnector, Transform pieceRoot, Transform targetConnector)
+    {
+        if (sourceConnector == null || pieceRoot == null || targetConnector == null)
+            return false;
+
+        Vector3 oldPos = pieceRoot.position;
+        Quaternion oldRot = pieceRoot.rotation;
+
+        Vector3 desiredForward = (-targetConnector.forward).normalized;
+        Vector3 desiredUp = Vector3.ProjectOnPlane(targetConnector.up, desiredForward).normalized;
+        if (desiredUp.sqrMagnitude < 1e-6f) desiredUp = Vector3.up;
+
+        Quaternion desiredConnRot = Quaternion.LookRotation(desiredForward, desiredUp);
+
+        Quaternion deltaRot = desiredConnRot * Quaternion.Inverse(sourceConnector.rotation);
+        pieceRoot.rotation = deltaRot * pieceRoot.rotation;
+
+        Vector3 deltaPos = targetConnector.position - sourceConnector.position;
+        pieceRoot.position += deltaPos;
+
+        float dist = Vector3.Distance(sourceConnector.position, targetConnector.position);
+        float ang = Vector3.Angle(sourceConnector.forward, -targetConnector.forward);
+
+        if (dist > SNAP_EPSILON || ang > ANGLE_EPSILON_DEG)
+        {
+            pieceRoot.SetPositionAndRotation(oldPos, oldRot);
+            return false;
         }
 
-        // Fallback to cap
-        PlaceCap(def, rng.Split(80200), dungeonRoot, target, occupied);
+        return true;
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Overlap / meeting checks
+    // ─────────────────────────────────────────────────────────────
 
     private static bool WouldOverlapOrMeet(
         CaveFeatureDefinition def,
@@ -607,21 +837,14 @@ public static class CaveDungeonGenerator
 
         Transform ignoreRoot = GetTopLevelPieceRoot(dungeonRoot, connectingTo != null ? connectingTo.transform : null);
 
-        // Overlap check
         for (int i = 0; i < occupied.Count; i++)
         {
             OccupiedEntry e = occupied[i];
-            if (e.pieceRoot == null)
-                continue;
-
-            if (ignoreRoot != null && e.pieceRoot == ignoreRoot)
-                continue;
-
-            if (candidateBounds.Intersects(e.localBounds))
-                return true;
+            if (e.pieceRoot == null) continue;
+            if (ignoreRoot != null && e.pieceRoot == ignoreRoot) continue;
+            if (candidateBounds.Intersects(e.localBounds)) return true;
         }
 
-        // "Meeting" check
         if (def.minConnectorSeparation > 0f)
         {
             CaveConnector[] newConns = candidatePiece.GetComponentsInChildren<CaveConnector>(true);
@@ -636,11 +859,8 @@ public static class CaveDungeonGenerator
 
                 if (connectingTo != null)
                 {
-                    if (a.transform == connectingTo.transform)
-                        continue;
-
-                    if ((a.transform.position - connectingTo.transform.position).sqrMagnitude < 0.0001f)
-                        continue;
+                    if (a.transform == connectingTo.transform) continue;
+                    if ((a.transform.position - connectingTo.transform.position).sqrMagnitude < 0.0001f) continue;
                 }
 
                 for (int j = 0; j < allConns.Length; j++)
@@ -649,9 +869,7 @@ public static class CaveDungeonGenerator
                     if (b == null) continue;
                     if (b.isUsed) continue;
                     if (connectingTo != null && b == connectingTo) continue;
-
-                    if (b.transform.IsChildOf(candidatePiece.transform))
-                        continue;
+                    if (b.transform.IsChildOf(candidatePiece.transform)) continue;
 
                     if ((a.transform.position - b.transform.position).sqrMagnitude < minDistSq)
                         return true;
@@ -664,8 +882,7 @@ public static class CaveDungeonGenerator
 
     private static Transform GetTopLevelPieceRoot(Transform dungeonRoot, Transform anyChild)
     {
-        if (dungeonRoot == null || anyChild == null)
-            return null;
+        if (dungeonRoot == null || anyChild == null) return null;
 
         Transform t = anyChild;
         while (t != null && t.parent != null && t.parent != dungeonRoot)
@@ -695,140 +912,22 @@ public static class CaveDungeonGenerator
             b.Expand(pad * 2f);
     }
 
-    private static bool TryPickRoomConnector(GameObject piece, string tag, Rng rng, out CaveConnector inConn)
-    {
-        inConn = null;
-
-        if (piece == null)
-            return false;
-
-        CaveConnector[] conns = piece.GetComponentsInChildren<CaveConnector>(true);
-        if (conns == null || conns.Length == 0)
-            return false;
-
-        List<CaveConnector> candidates = new List<CaveConnector>(conns.Length);
-        for (int i = 0; i < conns.Length; i++)
-        {
-            CaveConnector c = conns[i];
-            if (c == null) continue;
-            if (!c.enabledForGeneration) continue;
-            if (c.isUsed) continue;
-            if (c.connectorTag != tag) continue;
-            candidates.Add(c);
-        }
-
-        if (candidates.Count == 0)
-            return false;
-
-        inConn = candidates[rng.NextInt(0, candidates.Count)];
-        return true;
-    }
-
-    private static void PlaceCap(
-        CaveFeatureDefinition def,
-        Rng rng,
-        Transform dungeonRoot,
-        CaveConnector target,
-        List<OccupiedEntry> occupied)
-    {
-        if (def == null || rng == null || dungeonRoot == null || target == null)
-            return;
-
-        if (target.isUsed)
-            return;
-
-        GameObject capPrefab = PickWeighted(def.caps, rng);
-        if (capPrefab == null)
-        {
-            target.MarkUsed();
-            return;
-        }
-
-        int tries = Mathf.Max(1, def.placementRetriesPerConnector);
-
-        for (int attempt = 0; attempt < tries; attempt++)
-        {
-            GameObject cap = Object.Instantiate(capPrefab, dungeonRoot);
-            cap.name = $"Cap_{attempt}";
-
-            CaveConnector capConn;
-            if (!TryPickRoomConnector(cap, target.connectorTag, rng.Split(5000 + attempt * 7), out capConn))
-            {
-                Object.Destroy(cap);
-                continue;
-            }
-
-            AlignConnectorTo(capConn.transform, cap.transform, target.transform);
-
-            if (def.preventOverlaps)
-            {
-                if (WouldOverlapOrMeet(def, dungeonRoot, cap, target, occupied))
-                {
-                    Object.Destroy(cap);
-                    continue;
-                }
-            }
-
-            target.MarkUsed();
-            capConn.MarkUsed();
-
-            if (def.preventOverlaps)
-            {
-                if (TryComputeLocalBounds(dungeonRoot, cap, out Bounds b))
-                {
-                    NormalizeBounds(ref b, def);
-                    occupied.Add(new OccupiedEntry(b, cap.transform));
-                }
-            }
-
-            return;
-        }
-
-        target.MarkUsed();
-    }
-
-    private static void AlignConnectorTo(Transform sourceConnector, Transform pieceRoot, Transform targetConnector)
-    {
-        if (sourceConnector == null || pieceRoot == null || targetConnector == null)
-            return;
-
-        // OUT is +Z (forward)
-        Vector3 targetOut = targetConnector.forward;
-        Vector3 desiredForward = (-targetOut).normalized;
-
-        Vector3 desiredUp = Vector3.ProjectOnPlane(Vector3.up, desiredForward).normalized;
-        if (desiredUp.sqrMagnitude < 1e-6f)
-            desiredUp = Vector3.up;
-
-        Quaternion desiredConnRot = Quaternion.LookRotation(desiredForward, desiredUp);
-
-        Vector3 connLocalPos = pieceRoot.InverseTransformPoint(sourceConnector.position);
-        Quaternion connLocalRot = Quaternion.Inverse(pieceRoot.rotation) * sourceConnector.rotation;
-
-        Quaternion newRootRot = desiredConnRot * Quaternion.Inverse(connLocalRot);
-        Vector3 newRootPos = targetConnector.position - (newRootRot * connLocalPos);
-
-        pieceRoot.SetPositionAndRotation(newRootPos, newRootRot);
-    }
+    // ─────────────────────────────────────────────────────────────
+    // Bounds utils
+    // ─────────────────────────────────────────────────────────────
 
     private static bool TryComputeLocalBounds(Transform dungeonRoot, GameObject go, out Bounds localBounds)
     {
         localBounds = default;
-
-        if (dungeonRoot == null || go == null)
-            return false;
+        if (dungeonRoot == null || go == null) return false;
 
         Renderer[] renderers = go.GetComponentsInChildren<Renderer>(true);
         if (renderers != null && renderers.Length > 0)
-        {
             return ComputeLocalBoundsFromWorldBounds(dungeonRoot, renderers, out localBounds);
-        }
 
         Collider[] colliders = go.GetComponentsInChildren<Collider>(true);
         if (colliders != null && colliders.Length > 0)
-        {
             return ComputeLocalBoundsFromWorldBounds(dungeonRoot, colliders, out localBounds);
-        }
 
         return false;
     }
@@ -846,12 +945,9 @@ public static class CaveDungeonGenerator
             if (comps[i] == null) continue;
 
             Bounds wb;
-            if (comps[i] is Renderer r)
-                wb = r.bounds;
-            else if (comps[i] is Collider c)
-                wb = c.bounds;
-            else
-                continue;
+            if (comps[i] is Renderer r) wb = r.bounds;
+            else if (comps[i] is Collider c) wb = c.bounds;
+            else continue;
 
             Vector3 wmin = wb.min;
             Vector3 wmax = wb.max;
@@ -873,9 +969,7 @@ public static class CaveDungeonGenerator
                 Vector3 p = dungeonRoot.InverseTransformPoint(corners[k]);
                 if (!has)
                 {
-                    min = p;
-                    max = p;
-                    has = true;
+                    min = p; max = p; has = true;
                 }
                 else
                 {
@@ -885,8 +979,7 @@ public static class CaveDungeonGenerator
             }
         }
 
-        if (!has)
-            return false;
+        if (!has) return false;
 
         Vector3 size = max - min;
         localBounds = new Bounds((min + max) * 0.5f, size);
