@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 
 [RequireComponent(typeof(CharacterController))]
 [RequireComponent(typeof(Health))]
@@ -6,10 +7,10 @@ public class DimensionKongAI : MonoBehaviour
 {
     public enum State
     {
-        Idle,
         Patrol,
-        Chase,
-        TeleportAttack,
+        Idle,
+        Follow,
+        Attack,
         Dead
     }
 
@@ -17,7 +18,8 @@ public class DimensionKongAI : MonoBehaviour
     public State currentState = State.Patrol;
 
     [Header("Movement")]
-    public float walkSpeed = 2f;
+    public float walkSpeed = 2.0f;
+    public float runSpeed = 5.5f;
     public float gravity = -19.62f;
     public float rotationSpeed = 8f;
 
@@ -27,20 +29,22 @@ public class DimensionKongAI : MonoBehaviour
     public float idleTimeMin = 1.5f;
     public float idleTimeMax = 4f;
 
-    [Header("Detection")]
+    [Header("Detection (Radius only)")]
     public float detectionRadius = 30f;
 
-    [Header("Keep Distance")]
-    public float followStartDistance = 12f;
-    public float followStartConfirmTime = 0.25f;
+    [Header("Keep Distance (Hysteresis)")]
+    public float followStartDistance = 12f; // if farther than this => approach
+    public float followStopDistance = 10f;  // if within this => stop and stare
 
-    [Header("Teleport Attack")]
+    [Header("Teleport Attack Schedule (only while near)")]
     public float teleportIntervalMin = 60f;
     public float teleportIntervalMax = 120f;
 
-    [Tooltip("Failsafe: if Animation Event is missing, force-finish the attack after this many seconds.")]
-    public float attackTimeoutSeconds = 10f;
+    [Header("Attack Animation Timing")]
+    [Tooltip("If you don't use animation event, teleport happens after this delay (180 frames @60fps = 3s).")]
+    public float attackTeleportDelay = 3.0f;
 
+    [Header("Teleport Destination")]
     public int teleportMaxTries = 24;
     public float teleportDistanceMin = 12f;
     public float teleportDistanceMax = 28f;
@@ -56,18 +60,14 @@ public class DimensionKongAI : MonoBehaviour
     public GameObject awakeTarget;
     public string awakeMessageName = "WakeUp";
 
-    [Header("Animation (Optional)")]
+    [Header("Animation")]
     public Animator animator;
     public string speedParam = "Speed";
-    public string isDeadParam = "IsDead";
-    public string attackTrigger = "Attack";
+    public string isDeadParam = "IsDead";         // bool recommended
+    public string attackTriggerParam = "Attack";  // trigger
 
-    [Header("Position Lock (Fix Idle Sliding / RootMotion Snap)")]
-    [Tooltip("When facing the player (close zone) or during teleport attack, lock XZ position so only rotation changes.")]
-    public bool lockXZWhileFacing = true;
-
-    [Tooltip("If XZ drift is smaller than this, ignore (helps avoid micro jitter).")]
-    public float lockXZTolerance = 0.001f;
+    [Header("Death (Reusable Object)")]
+    public EnemyDeath death = new EnemyDeath();
 
     [Header("Debug")]
     public bool debugLogs;
@@ -75,40 +75,39 @@ public class DimensionKongAI : MonoBehaviour
 
     private CharacterController controller;
     private Health health;
-
     private Transform player;
-    private PlayerController playerController;
     private CharacterController playerCC;
 
     private Vector3 homePosition;
-    private Vector3? currentWanderTarget;
-    private float verticalVelocity;
-    private float patrolIdleTimer;
+    private Vector3? wanderTarget;
+    private float idleTimer;
 
-    private bool playerInRange;
-    private float nextTeleportTime;
+    private float verticalVelocity;
+    private Vector3 lastPosition;
+    private float animSpeed;
 
     private bool radarJamming;
 
-    private bool isTeleportAttacking;
-    private float teleportAttackDeadline;
+    // Attack schedule
+    private bool playerInDetection;
+    private float nextTeleportTime;
 
-    private float farTimer;     // confirms "player is far enough" before walking
-    private bool isFollowing;   // true while we are actually walking toward the player
-
-    // XZ lock
-    private bool xzLocked;
-    private Vector3 lockedXZ;
-
-    private Vector3 lastPosition;
-    private float animSpeed;
+    // Attack execution
+    private bool attacking;
+    private float attackTeleportTimer;
+    private Vector3 pendingTeleportDest;
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
         health = GetComponent<Health>();
 
-        CachePlayerRefs();
+        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+        if (playerObj != null)
+        {
+            player = playerObj.transform;
+            playerCC = playerObj.GetComponent<CharacterController>();
+        }
 
         homePosition = transform.position;
         lastPosition = transform.position;
@@ -119,101 +118,92 @@ public class DimensionKongAI : MonoBehaviour
             if (animator == null) animator = GetComponentInChildren<Animator>();
         }
 
-        health.OnDeath += OnDeath;
+        // Bind EnemyDeath
+        NavMeshAgent agent = GetComponent<NavMeshAgent>();
+        Rigidbody rb = GetComponent<Rigidbody>();
+        Collider[] cols = null;
 
-        ResetTeleportSchedule();
+        death.gravity = gravity;
+        death.animator = animator;
+        death.isDeadParam = isDeadParam;
+        death.speedParam = speedParam;
+        death.Bind(transform, health, controller, animator, agent, rb, cols);
+
+        death.onDeadFirstTime = () =>
+        {
+            currentState = State.Dead;
+            SetRadarJammed(false);
+            TriggerAwakeTarget();
+        };
+
+        ResetTeleportSchedule(forceNow: true);
     }
 
     void Update()
     {
-        if (health.IsDead())
-            currentState = State.Dead;
-
-        if (currentState == State.Dead)
+        // DEAD: EnemyDeath handles (AI stop + gravity + XZ lock)
+        if (death.Tick())
         {
-            UpdateDead();
+            currentState = State.Dead;
+            return;
+        }
+
+        EnsurePlayerRef();
+
+        bool inDetect = IsPlayerWithinDetection();
+        if (inDetect && !playerInDetection)
+        {
+            playerInDetection = true;
+            ResetTeleportSchedule(forceNow: true);
+        }
+        else if (!inDetect && playerInDetection)
+        {
+            playerInDetection = false;
+            ResetTeleportSchedule(forceNow: true);
+        }
+
+        // Radar jam
+        UpdateRadarJam(inDetect);
+
+        // Attack state handling
+        if (attacking)
+        {
+            UpdateAttackExecution();
             ApplyGravity();
-            ApplyXZLockIfNeeded();
             UpdateAnimatorByPosition();
             lastPosition = transform.position;
             return;
         }
 
-        if (player == null)
-            CachePlayerRefs();
-
-        bool inDetect = IsPlayerWithinDetection();
-
-        if (inDetect)
+        if (!inDetect)
         {
-            if (!playerInRange)
-            {
-                playerInRange = true;
-                farTimer = 0f;
-                isFollowing = false;
-                UnlockXZ();
-                ResetTeleportSchedule();
-            }
-
-            UpdateRadarJam(true);
-
-            // Start teleport attack if it's time.
-            UpdateTeleportAttackStart();
-
-            if (isTeleportAttacking)
-            {
-                currentState = State.TeleportAttack;
-
-                // During attack: do NOT move; only face and lock XZ.
-                if (player != null) FaceTowards(player.position);
-                LockXZNow();
-
-                if (Time.time >= teleportAttackDeadline)
-                {
-                    if (debugLogs)
-                        Debug.LogWarning("[DimensionKong] Attack timeout reached. Finishing teleport attack (failsafe).");
-
-                    FinishTeleportAttack();
-                }
-            }
-            else
-            {
-                UpdateKeepDistanceBehavior();
-            }
+            UpdatePatrol();
         }
         else
         {
-            if (playerInRange)
-            {
-                playerInRange = false;
-                farTimer = 0f;
-                isFollowing = false;
-                UnlockXZ();
-                ResetTeleportSchedule();
-            }
-
-            UpdateRadarJam(false);
-
-            if (!isTeleportAttacking)
-            {
-                UnlockXZ(); // allow normal patrol movement
-                UpdatePatrol();
-            }
+            UpdateKeepDistanceLogic();
+            UpdateTeleportScheduleAndMaybeAttack();
         }
 
         ApplyGravity();
-        ApplyXZLockIfNeeded();     // <- this cancels any unwanted XZ drift while facing
         UpdateAnimatorByPosition();
         lastPosition = transform.position;
     }
 
-    private void CachePlayerRefs()
+    void LateUpdate()
     {
+        if (death.IsDeadNow())
+            death.LateTick();
+    }
+
+    private void EnsurePlayerRef()
+    {
+        if (player != null) return;
+
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj == null) return;
 
         player = playerObj.transform;
-        playerController = playerObj.GetComponent<PlayerController>();
         playerCC = playerObj.GetComponent<CharacterController>();
     }
 
@@ -223,188 +213,124 @@ public class DimensionKongAI : MonoBehaviour
 
         Vector3 a = transform.position; a.y = 0f;
         Vector3 b = player.position; b.y = 0f;
-
         return Vector3.Distance(a, b) <= detectionRadius;
     }
 
-    /// <summary>
-    /// Behavior:
-    /// - If player stays farther than followStartDistance for followStartConfirmTime -> walk closer.
-    /// - Else -> NO movement, ONLY rotate to face player (and lock XZ to prevent drift).
-    /// - When follow begins, reset teleport schedule.
-    /// </summary>
-    private void UpdateKeepDistanceBehavior()
+    private void UpdateKeepDistanceLogic()
     {
-        if (player == null)
-        {
-            currentState = State.Patrol;
-            farTimer = 0f;
-            isFollowing = false;
-            UnlockXZ();
-            return;
-        }
+        if (player == null) return;
 
         Vector3 a = transform.position; a.y = 0f;
         Vector3 b = player.position; b.y = 0f;
         float dist = Vector3.Distance(a, b);
 
+        // If far => approach (FOLLOW) and reset teleport timer (per your request)
         if (dist > followStartDistance)
         {
-            farTimer += Time.deltaTime;
-            UnlockXZ(); // allow movement while deciding/doing follow
+            currentState = State.Follow;
+            ResetTeleportSchedule(forceNow: false); // push attack out while following
+            MoveTowards(player.position, runSpeed);
+            return;
+        }
 
-            if (farTimer >= followStartConfirmTime)
-            {
-                if (!isFollowing)
-                {
-                    isFollowing = true;
-                    ResetTeleportSchedule(); // follow start resets attack timer
-
-                    if (debugLogs)
-                        Debug.Log("[DimensionKong] Follow started -> teleport timer reset.");
-                }
-
-                currentState = State.Chase;
-
-                // Chasing: move+rotate together
-                MoveTowards(player.position, walkSpeed);
-                return;
-            }
-
-            // Not confirmed yet -> stand, face only (no movement)
+        // If close enough => stop and stare
+        if (dist <= followStopDistance)
+        {
             currentState = State.Idle;
             FaceTowards(player.position);
-            LockXZNow();
             return;
         }
 
-        // Close zone -> stand still, face only, and lock XZ (prevents tiny drifts)
-        farTimer = 0f;
-        isFollowing = false;
-
-        currentState = State.Idle;
-        FaceTowards(player.position);
-        LockXZNow();
-    }
-
-    private void UpdatePatrol()
-    {
-        if (currentState != State.Patrol && currentState != State.Idle)
+        // In hysteresis band => keep previous behavior
+        if (currentState == State.Follow)
         {
-            patrolIdleTimer = 0f;
-            currentWanderTarget = null;
-        }
-
-        if (currentState == State.Idle)
-        {
-            if (patrolIdleTimer <= 0f)
-                patrolIdleTimer = Random.Range(idleTimeMin, idleTimeMax);
-
-            patrolIdleTimer -= Time.deltaTime;
-            if (patrolIdleTimer <= 0f)
-            {
-                ChooseNewWanderTarget();
-                currentState = State.Patrol;
-            }
-            return;
-        }
-
-        currentState = State.Patrol;
-
-        if (!currentWanderTarget.HasValue)
-            ChooseNewWanderTarget();
-
-        Vector3 target = currentWanderTarget.Value;
-        MoveTowards(target, walkSpeed);
-
-        Vector3 flatSelf = new Vector3(transform.position.x, 0f, transform.position.z);
-        Vector3 flatTarget = new Vector3(target.x, 0f, target.z);
-
-        if (Vector3.Distance(flatSelf, flatTarget) <= wanderPointTolerance)
-        {
-            currentWanderTarget = null;
-            currentState = State.Idle;
-        }
-    }
-
-    private void ChooseNewWanderTarget()
-    {
-        Vector2 rand = Random.insideUnitCircle * wanderRadius;
-        currentWanderTarget = homePosition + new Vector3(rand.x, 0f, rand.y);
-    }
-
-    private void UpdateTeleportAttackStart()
-    {
-        if (player == null) return;
-        if (isTeleportAttacking) return;
-        if (Time.time < nextTeleportTime) return;
-
-        StartTeleportAttack();
-    }
-
-    private void StartTeleportAttack()
-    {
-        isTeleportAttacking = true;
-        currentState = State.TeleportAttack;
-
-        farTimer = 0f;
-        isFollowing = false;
-
-        // lock XZ during attack to avoid any drifting/rootmotion shifts
-        LockXZNow();
-
-        teleportAttackDeadline = Time.time + Mathf.Max(1f, attackTimeoutSeconds);
-
-        if (player != null) FaceTowards(player.position);
-
-        if (animator != null && !string.IsNullOrEmpty(attackTrigger))
-        {
-            animator.ResetTrigger(attackTrigger);
-            animator.SetTrigger(attackTrigger);
-
-            if (debugLogs)
-                Debug.Log("[DimensionKong] Teleport attack started (Attack animation).");
+            MoveTowards(player.position, runSpeed);
         }
         else
         {
-            FinishTeleportAttack();
+            currentState = State.Idle;
+            FaceTowards(player.position);
+        }
+    }
+
+    private void UpdateTeleportScheduleAndMaybeAttack()
+    {
+        if (player == null) return;
+
+        // Only count down while "near" (idle / not following)
+        if (currentState == State.Follow || currentState == State.Patrol)
+            return;
+
+        if (Time.time < nextTeleportTime)
+            return;
+
+        // Start attack (play animation), teleport at the end
+        if (TryFindTeleportDestination(out Vector3 dest))
+        {
+            StartAttack(dest);
+        }
+
+        ResetTeleportSchedule(forceNow: false);
+    }
+
+    private void StartAttack(Vector3 teleportDest)
+    {
+        attacking = true;
+        currentState = State.Attack;
+
+        pendingTeleportDest = teleportDest;
+        attackTeleportTimer = Mathf.Max(0.01f, attackTeleportDelay);
+
+        if (animator != null && !string.IsNullOrEmpty(attackTriggerParam))
+        {
+            animator.ResetTrigger(attackTriggerParam);
+            animator.SetTrigger(attackTriggerParam);
+        }
+
+        if (player != null)
+            FaceTowards(player.position);
+
+        if (debugLogs) Debug.Log("[DimensionKong] Attack started (teleport pending).");
+    }
+
+    private void UpdateAttackExecution()
+    {
+        if (player != null)
+            FaceTowards(player.position);
+
+        attackTeleportTimer -= Time.deltaTime;
+        if (attackTeleportTimer <= 0f)
+        {
+            attacking = false;
+            DoTeleportPlayer(pendingTeleportDest);
+            currentState = State.Idle;
+
+            if (debugLogs) Debug.Log("[DimensionKong] Teleport executed (timer fallback).");
         }
     }
 
     /// <summary>
-    /// Animation Event hook.
-    /// Put this event on the LAST frame of the Attack clip (frame 179/180).
+    /// Animation Event hook: call this at the END of attack animation.
     /// </summary>
-    public void AnimEvent_TeleportPlayer()
+    public void AnimEvent_TeleportPlayerNow()
     {
-        if (!isTeleportAttacking) return;
+        if (death.IsDeadNow()) return;
+        if (!attacking) return;
 
-        if (debugLogs)
-            Debug.Log("[DimensionKong] Animation Event received (attack end). Teleporting player.");
+        attacking = false;
+        DoTeleportPlayer(pendingTeleportDest);
+        currentState = State.Idle;
 
-        FinishTeleportAttack();
+        if (debugLogs) Debug.Log("[DimensionKong] Teleport executed (animation event).");
     }
 
-    private void FinishTeleportAttack()
-    {
-        if (player != null && TryFindTeleportDestination(out Vector3 dest))
-        {
-            DoTeleportPlayer(dest);
-
-            if (debugLogs)
-                Debug.Log($"[DimensionKong] Teleported player to {dest}");
-        }
-
-        isTeleportAttacking = false;
-        UnlockXZ(); // after attack, allow normal behavior
-        ResetTeleportSchedule();
-    }
-
-    private void ResetTeleportSchedule()
+    private void ResetTeleportSchedule(bool forceNow)
     {
         float min = Mathf.Max(1f, teleportIntervalMin);
         float max = Mathf.Max(min, teleportIntervalMax);
-        nextTeleportTime = Time.time + Random.Range(min, max);
+
+        float interval = forceNow ? Random.Range(min, max) : Random.Range(min, max);
+        nextTeleportTime = Time.time + interval;
     }
 
     private bool TryFindTeleportDestination(out Vector3 worldPosition)
@@ -415,6 +341,7 @@ public class DimensionKongAI : MonoBehaviour
         float minR = Mathf.Max(0f, teleportDistanceMin);
         float maxR = Mathf.Max(minR, teleportDistanceMax);
 
+        // Approximate player capsule if we can't read it
         float capsuleRadius = 0.5f;
         float capsuleHeight = 2.0f;
         Vector3 capsuleCenterLocal = new Vector3(0f, capsuleHeight * 0.5f, 0f);
@@ -430,11 +357,14 @@ public class DimensionKongAI : MonoBehaviour
 
         for (int i = 0; i < teleportMaxTries; i++)
         {
-            Vector2 dir2 = Random.insideUnitCircle.normalized;
+            Vector2 dir2 = Random.insideUnitCircle;
             if (dir2.sqrMagnitude < 0.0001f) dir2 = Vector2.right;
+            dir2.Normalize();
 
             float r = Random.Range(minR, maxR);
-            Vector3 candidate = player.position + new Vector3(dir2.x, 0f, dir2.y) * r;
+            Vector3 flatOffset = new Vector3(dir2.x, 0f, dir2.y) * r;
+
+            Vector3 candidate = player.position + flatOffset;
 
             Vector3 rayOrigin = candidate + Vector3.up * teleportRaycastHeight;
             if (!Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, teleportRaycastHeight * 2f, teleportGroundMask, QueryTriggerInteraction.Ignore))
@@ -462,12 +392,6 @@ public class DimensionKongAI : MonoBehaviour
         if (player == null) return;
 
         Quaternion rot = player.rotation;
-
-        if (playerController != null)
-        {
-            playerController.TeleportTo(dest, rot, resetKnockback: true);
-            return;
-        }
 
         if (playerCC != null)
         {
@@ -498,9 +422,9 @@ public class DimensionKongAI : MonoBehaviour
 
         Vector3 a = transform.position; a.y = 0f;
         Vector3 b = player.position; b.y = 0f;
+        float dist = Vector3.Distance(a, b);
 
-        bool shouldJam = Vector3.Distance(a, b) <= radarJamRadius;
-        SetRadarJammed(shouldJam);
+        SetRadarJammed(dist <= radarJamRadius);
     }
 
     private void SetRadarJammed(bool jam)
@@ -509,28 +433,72 @@ public class DimensionKongAI : MonoBehaviour
         radarJamming = jam;
 
         if (player != null && !string.IsNullOrEmpty(radarJamMessageName))
-        {
             player.gameObject.SendMessage(radarJamMessageName, jam, SendMessageOptions.DontRequireReceiver);
-        }
 
-        if (debugLogs)
-            Debug.Log($"[DimensionKong] Radar jam = {jam}");
+        if (debugLogs) Debug.Log($"[DimensionKong] Radar jam = {jam}");
     }
 
-    private void ApplyGravity()
+    private void TriggerAwakeTarget()
     {
-        if (!controller.enabled) return;
+        if (awakeTarget == null) return;
 
-        if (controller.isGrounded && verticalVelocity < 0f)
-            verticalVelocity = -2f;
+        IWakeable w = awakeTarget.GetComponent<IWakeable>();
+        if (w != null)
+        {
+            w.WakeUp();
+            return;
+        }
 
-        verticalVelocity += gravity * Time.deltaTime;
-        controller.Move(Vector3.up * verticalVelocity * Time.deltaTime);
+        awakeTarget.SendMessage(awakeMessageName, SendMessageOptions.DontRequireReceiver);
+    }
+
+    private void UpdatePatrol()
+    {
+        if (currentState != State.Patrol && currentState != State.Idle)
+        {
+            idleTimer = 0f;
+            wanderTarget = null;
+        }
+
+        if (currentState == State.Idle)
+        {
+            if (idleTimer <= 0f) idleTimer = Random.Range(idleTimeMin, idleTimeMax);
+
+            idleTimer -= Time.deltaTime;
+            if (idleTimer <= 0f)
+            {
+                ChooseNewWanderTarget();
+                currentState = State.Patrol;
+            }
+            return;
+        }
+
+        currentState = State.Patrol;
+
+        if (!wanderTarget.HasValue)
+            ChooseNewWanderTarget();
+
+        Vector3 target = wanderTarget.Value;
+        MoveTowards(target, walkSpeed);
+
+        Vector3 flatSelf = new Vector3(transform.position.x, 0f, transform.position.z);
+        Vector3 flatTarget = new Vector3(target.x, 0f, target.z);
+        if (Vector3.Distance(flatSelf, flatTarget) <= wanderPointTolerance)
+        {
+            wanderTarget = null;
+            currentState = State.Idle;
+        }
+    }
+
+    private void ChooseNewWanderTarget()
+    {
+        Vector2 rand = Random.insideUnitCircle * wanderRadius;
+        wanderTarget = homePosition + new Vector3(rand.x, 0f, rand.y);
     }
 
     private void MoveTowards(Vector3 target, float speed)
     {
-        if (!controller.enabled) return;
+        if (controller == null || !controller.enabled) return;
 
         Vector3 direction = target - transform.position;
         direction.y = 0f;
@@ -556,18 +524,20 @@ public class DimensionKongAI : MonoBehaviour
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
     }
 
+    private void ApplyGravity()
+    {
+        if (controller == null || !controller.enabled) return;
+
+        if (controller.isGrounded && verticalVelocity < 0f)
+            verticalVelocity = -2f;
+
+        verticalVelocity += gravity * Time.deltaTime;
+        controller.Move(Vector3.up * verticalVelocity * Time.deltaTime);
+    }
+
     private void UpdateAnimatorByPosition()
     {
         if (animator == null) return;
-
-        if (health.IsDead())
-        {
-            if (!string.IsNullOrEmpty(isDeadParam))
-                animator.SetBool(isDeadParam, true);
-            if (!string.IsNullOrEmpty(speedParam))
-                animator.SetFloat(speedParam, 0f);
-            return;
-        }
 
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
@@ -584,74 +554,6 @@ public class DimensionKongAI : MonoBehaviour
             animator.SetFloat(speedParam, animSpeed);
     }
 
-    private void UpdateDead()
-    {
-        SetRadarJammed(false);
-
-        if (controller != null && controller.enabled)
-            controller.enabled = false;
-
-        if (animator != null && !string.IsNullOrEmpty(isDeadParam))
-            animator.SetBool(isDeadParam, true);
-    }
-
-    private void OnDeath(Health h)
-    {
-        currentState = State.Dead;
-
-        if (awakeTarget != null)
-        {
-            IWakeable wakeable = awakeTarget.GetComponent<IWakeable>();
-            if (wakeable != null)
-                wakeable.WakeUp();
-            else
-                awakeTarget.SendMessage(awakeMessageName, SendMessageOptions.DontRequireReceiver);
-
-            if (debugLogs)
-                Debug.Log($"[DimensionKong] Awaken trigger fired for '{awakeTarget.name}'");
-        }
-
-        Collider col = GetComponent<Collider>();
-        if (col != null) col.enabled = false;
-
-        if (controller != null) controller.enabled = false;
-
-        Destroy(gameObject, 10f);
-    }
-
-    // -------------------------
-    // XZ Lock helpers
-    // -------------------------
-    private void LockXZNow()
-    {
-        if (!lockXZWhileFacing) return;
-        if (xzLocked) return;
-
-        lockedXZ = transform.position;
-        lockedXZ.y = 0f;
-        xzLocked = true;
-    }
-
-    private void UnlockXZ()
-    {
-        xzLocked = false;
-    }
-
-    private void ApplyXZLockIfNeeded()
-    {
-        if (!lockXZWhileFacing) return;
-        if (!xzLocked) return;
-        if (controller == null || !controller.enabled) return;
-
-        Vector3 p = transform.position;
-        Vector3 correction = new Vector3(lockedXZ.x - p.x, 0f, lockedXZ.z - p.z);
-
-        float tol = Mathf.Max(0f, lockXZTolerance);
-        if (correction.sqrMagnitude <= tol * tol) return;
-
-        controller.Move(correction);
-    }
-
     void OnDrawGizmosSelected()
     {
         if (!debugGizmos) return;
@@ -659,10 +561,14 @@ public class DimensionKongAI : MonoBehaviour
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, detectionRadius);
 
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(transform.position, radarJamRadius);
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawWireSphere(transform.position, followStopDistance);
 
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, followStartDistance);
+
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, radarJamRadius);
     }
 }
+
