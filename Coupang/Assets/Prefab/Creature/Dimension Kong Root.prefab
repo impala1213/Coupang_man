@@ -55,7 +55,7 @@ SkinnedMeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -6478536213147159724, guid: ca8b71b9db6325743bd9a9a36558e1ba, type: 3}
+  - {fileID: 2100000, guid: bc1321a69398e144684c1fe10b419749, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -613,6 +613,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   currentState: 1
   walkSpeed: 4
+  runSpeed: 5.5
   gravity: -19.62
   rotationSpeed: 8
   wanderRadius: 25
@@ -621,10 +622,10 @@ MonoBehaviour:
   idleTimeMax: 4
   detectionRadius: 30
   followStartDistance: 6
-  followStartConfirmTime: 0.25
+  followStopDistance: 10
   teleportIntervalMin: 10
   teleportIntervalMax: 20
-  attackTimeoutSeconds: 10
+  attackTeleportDelay: 3
   teleportMaxTries: 24
   teleportDistanceMin: 12
   teleportDistanceMax: 28
@@ -640,9 +641,20 @@ MonoBehaviour:
   animator: {fileID: 0}
   speedParam: Speed
   isDeadParam: IsDead
-  attackTrigger: Attack
-  lockXZWhileFacing: 1
-  lockXZTolerance: 0.001
+  attackTriggerParam: Attack
+  death:
+    gravityWhenDead: 1
+    gravity: -19.62
+    lockXZOnDeath: 1
+    xzCorrectionSpeed: 120
+    lockTolerance: 0.0005
+    disableNavMeshAgent: 1
+    freezeRigidbody: 1
+    disableNonCharacterControllerColliders: 1
+    animator: {fileID: 0}
+    isDeadParam: IsDead
+    isDeadParamIsTrigger: 0
+    speedParam: Speed
   debugLogs: 0
   debugGizmos: 1
 --- !u!54 &6947583434630353599
