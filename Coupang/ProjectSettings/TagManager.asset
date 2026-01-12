@@ -15,13 +15,13 @@ TagManager:
   - Water
   - UI
   - Interactable
-  - 
-  - 
+  - Player
+  - Enemy
   - Ground
-  - 
-  - 
-  - 
-  - 
+  - PlayerAttack
+  - EnemyAttack
+  - PlayerHitbox
+  - EnemyHitbox
   - 
   - 
   - 
