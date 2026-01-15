@@ -67,6 +67,7 @@ GameObject:
   - component: {fileID: 2477579492317674555}
   - component: {fileID: 4446314967558798238}
   - component: {fileID: 1912449856635907847}
+  - component: {fileID: 685992521524238252}
   m_Layer: 8
   m_Name: Mushroom Root
   m_TagString: Creature
@@ -163,62 +164,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 78d877ec04854ee41907a37979e9837e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  chaseSpeed: 1
-  gravity: -19.62
-  rotationSpeed: 10
-  detectionRadius: 8
-  viewAngle: 60
-  loseSightTime: 2
-  eyeHeight: 1.2
-  lineOfSightMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  attackRange: 3
-  attackCooldown: 2.4
-  attackSpawnDelay: 0.35
-  attackExitMultiplier: 1.35
-  sporeCloudPrefab: {fileID: 0}
-  sporeOrigin: {fileID: 0}
-  cloudDuration: 2.5
-  cloudRadius: 6
-  cloudConeHalfAngle: 25
-  cloudTickInterval: 0.35
-  cloudDamagePerTick: 4
-  originUpOffset: 1
-  originForwardOffset: 0.8
-  burstOnDeath: 1
-  deathCloudCount: 10
-  deathRingRadius: 1.6
-  deathCloudDuration: 2.2
-  deathCloudRadius: 4.5
-  deathCloudConeHalfAngle: 30
-  deathCloudTickInterval: 0.4
-  deathCloudDamagePerTick: 4
+  chase: {fileID: 0}
+  health: {fileID: 0}
   animator: {fileID: 478365251795405904}
+  attackRange: 3
+  attackConeAngle: 70
+  attackCooldown: 2.4
+  attackStartDelay: 0.25
+  sporeDuration: 1.2
+  damagePerSecond: 10
+  attackOrigin: {fileID: 0}
+  sporeVfxPrefab: {fileID: 0}
+  sporeVfxLocalOffset: {x: 0, y: 1, z: 0.8}
+  spawnDeathSpores: 1
+  deathSporeRays: 12
+  deathSporeRange: 5
+  deathSporeDuration: 1
+  deathDamagePerSecond: 12
+  hitLockDuration: 0.4
   speedParam: Speed
-  isDeadParam: IsDead
   attackTriggerParam: Attack
   hitTriggerParam: Hit
-  freezeWhileHit: 1
-  hitFreezeDuration: 0.45
-  cancelAttackOnHit: 1
-  rotateWhileHit: 1
-  hitTriggerMinInterval: 0.15
-  death:
-    gravityWhenDead: 1
-    gravity: -19.62
-    lockXZOnDeath: 1
-    xzCorrectionSpeed: 120
-    lockTolerance: 0.0005
-    disableNavMeshAgent: 1
-    freezeRigidbody: 1
-    disableNonCharacterControllerColliders: 1
-    animator: {fileID: 0}
-    isDeadParam: IsDead
-    isDeadParamIsTrigger: 0
-    speedParam: Speed
-  currentState: 0
+  isDeadParam: IsDead
+  lockChaseWhileBusy: 1
   debugLogs: 0
+  debugGizmos: 1
 --- !u!54 &1912449856635907847
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -246,6 +216,54 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &685992521524238252
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 888377590286086759}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9212c9cf3b97bef48916831ffc7b6fe6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  controller: {fileID: 0}
+  animator: {fileID: 0}
+  walkSpeed: 1
+  runSpeed: 1
+  rotationSpeed: 10
+  gravity: -19.62
+  patrolRadius: 25
+  arriveDistance: 1.5
+  patrolIdleMin: 1.5
+  patrolIdleMax: 4
+  playerMask:
+    serializedVersion: 2
+    m_Bits: 128
+  requirePlayerTag: 0
+  playerTag: Player
+  detectionRadius: 8
+  viewAngle: 120
+  eyeHeight: 1.5
+  forwardYawOffset: 0
+  requireLineOfSight: 1
+  losSampleCount: 3
+  fallbackTargetHeight: 1.8
+  sample01_A: 0.85
+  sample01_B: 0.55
+  sample01_C: 0.25
+  investigateArriveDistance: 1.5
+  postInvestigateForwardSeconds: 3
+  searchDuration: 6
+  searchRadius: 8
+  searchIdleMin: 0.5
+  searchIdleMax: 1.5
+  speedParam: Speed
+  speedDamp: 10
+  debugGizmos: 1
+  debugDrawLOS: 1
+  debugLogState: 0
 --- !u!1 &2641060504229954426
 GameObject:
   m_ObjectHideFlags: 0

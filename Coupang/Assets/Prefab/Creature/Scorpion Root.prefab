@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1936166018217780350}
   - component: {fileID: 1319531345830047988}
+  - component: {fileID: 7049249908317023601}
   m_Layer: 13
   m_Name: SC_Tail_Hitbox
   m_TagString: Untagged
@@ -47,7 +48,7 @@ CapsuleCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
@@ -55,6 +56,18 @@ CapsuleCollider:
   m_Height: 0.009741653
   m_Direction: 1
   m_Center: {x: -0.00037212166, y: 0.0015971841, z: -0.0006744004}
+--- !u!114 &7049249908317023601
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 744439040468491807}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: efbfaf2d731c5db4b9704ae157ae5a19, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &2262690486089630821
 GameObject:
   m_ObjectHideFlags: 0
@@ -101,6 +114,7 @@ GameObject:
   - component: {fileID: 2020701588502224708}
   - component: {fileID: 8698758108905317967}
   - component: {fileID: 3986681029910652119}
+  - component: {fileID: 3654804697165689030}
   m_Layer: 8
   m_Name: Scorpion Root
   m_TagString: Creature
@@ -142,13 +156,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 2
-  m_Radius: 0.5
+  m_Height: 0.00001
+  m_Radius: 0.49108863
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0.5, z: 0}
 --- !u!114 &2020701588502224708
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -175,27 +189,26 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c777bda789898cf49b97f9b3c89a3971, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  detectionRadius: 10
+  detectionRadius: 5
   playerMask:
     serializedVersion: 2
     m_Bits: 4294967295
-  grabRange: 3
-  grabRadius: 1.1
-  grabAngle: 100
+  grabCircumference: 36
+  grabHeight: 2.09
+  grabCenterYOffset: 0.9
+  grabDelay: 1.2
   grabSocket: {fileID: 356646032374987511}
   appearDuration: 1
-  attackGrabDelay: 0.35
-  attackToShakeDelay: 0.05
-  shakeDamagePerTick: 6
-  shakeTickInterval: 0.45
-  tailWeakPoint: {fileID: 400453506639857527}
-  tailVulnerableOnlyWhileShaking: 1
-  resetTailHpOnRecover: 1
   recoverDuration: 2
   rearmCooldownAfterRecover: 2.5
+  shakeDamagePerTick: 6
+  shakeTickInterval: 0.45
+  scorpionTail: {fileID: 400453506639857527}
+  tailVulnerableOnlyWhileShaking: 1
+  resetTailHpOnRecover: 1
   gravity: -19.62
   hideWhileBurrowed: []
-  animator: {fileID: 0}
+  animator: {fileID: 3654804697165689030}
   appearTriggerParam: Appear
   attackTriggerParam: Attack
   isShakingBoolParam: IsShaking
@@ -213,6 +226,11 @@ MonoBehaviour:
     isDeadParam: IsDead
     isDeadParamIsTrigger: 0
     speedParam: Speed
+  debugGizmos: 1
+  showGrabGizmoAlways: 1
+  showGrabGizmoWhenSelected: 1
+  grabWireColor: {r: 1, g: 0.2, b: 0.2, a: 1}
+  gizmoSegments: 28
   currentState: 0
   debugLogs: 0
 --- !u!54 &3986681029910652119
@@ -242,6 +260,28 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!95 &3654804697165689030
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4137867637415612054}
+  m_Enabled: 1
+  m_Avatar: {fileID: 9000000, guid: 44ca9db3843415041b4b1b4f2a702756, type: 3}
+  m_Controller: {fileID: 9100000, guid: dc9a3b7c19c11364b8e7b1482ddd573e, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 1
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &9053885938729007316
 GameObject:
   m_ObjectHideFlags: 0
@@ -252,6 +292,7 @@ GameObject:
   m_Component:
   - component: {fileID: 4876411042953101392}
   - component: {fileID: 693512386739101224}
+  - component: {fileID: 2248982164374078780}
   m_Layer: 13
   m_Name: SC_Tail_Hitbox 2
   m_TagString: Untagged
@@ -289,7 +330,7 @@ CapsuleCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
@@ -297,6 +338,18 @@ CapsuleCollider:
   m_Height: 0.004408711
   m_Direction: 1
   m_Center: {x: -0.0004713216, y: 0.0032063322, z: -0.00012586972}
+--- !u!114 &2248982164374078780
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9053885938729007316}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: efbfaf2d731c5db4b9704ae157ae5a19, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1001 &8347642387988828127
 PrefabInstance:
   m_ObjectHideFlags: 0

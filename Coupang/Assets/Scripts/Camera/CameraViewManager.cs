@@ -18,6 +18,7 @@ public class CameraViewManager : MonoBehaviour
     private float xRotation = 0f;
     private PlayerControls playerControls;
     private Vector2 lookInput;
+    private PlayerController playerController;
 
     // Initial 1P position relative to the Head Bone
     private readonly Vector3 firstPersonLocalPosition = new Vector3(0f, 0.05f, 0.15f);
@@ -28,6 +29,9 @@ public class CameraViewManager : MonoBehaviour
         playerControls.Player.Enable();
         playerControls.Player.Look.performed += ctx => lookInput = ctx.ReadValue<Vector2>();
         playerControls.Player.Look.canceled += ctx => lookInput = Vector2.zero;
+
+        if (playerRoot != null)
+            playerController = playerRoot.GetComponent<PlayerController>();
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
@@ -75,6 +79,12 @@ public class CameraViewManager : MonoBehaviour
     // --- Main Look Logic ---
     private void HandleCameraLook()
     {
+        if (playerController != null && playerController.IsControlLocked)
+        {
+            lookInput = Vector2.zero;
+            return;
+        }
+
         if (lookInput == Vector2.zero) return;
 
         float mouseX = lookInput.x * mouseSensitivity * Time.deltaTime;

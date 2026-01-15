@@ -8,6 +8,7 @@ public class FirstpersonCamera : MonoBehaviour
     public float verticalRotationLimit = 80f;
 
     private Transform playerRoot;
+    private PlayerController playerController;
 
     private float xRotation = 0f;
     private PlayerControls playerControls;
@@ -24,6 +25,7 @@ public class FirstpersonCamera : MonoBehaviour
         Cursor.visible = false;
 
         playerRoot = transform.root;
+        if (playerRoot != null) playerController = playerRoot.GetComponent<PlayerController>();
         if (playerRoot.GetComponent<PlayerController>() == null)
         {
             Debug.LogError("Player Root does not have PlayerController. Please check the hierarchy structure.");
@@ -37,6 +39,12 @@ public class FirstpersonCamera : MonoBehaviour
 
     private void HandleCameraLook()
     {
+        if (playerController != null && playerController.IsControlLocked)
+        {
+            lookInput = Vector2.zero;
+            return;
+        }
+
         if (lookInput == Vector2.zero) return;
 
         float mouseX = lookInput.x * mouseSensitivity * Time.deltaTime;

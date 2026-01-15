@@ -705,6 +705,7 @@ GameObject:
   - component: {fileID: 659884017664738295}
   - component: {fileID: 6947583434630353599}
   - component: {fileID: 4132798552237322510}
+  - component: {fileID: 3784137468579641514}
   m_Layer: 8
   m_Name: Dimension Kong Root
   m_TagString: Creature
@@ -779,21 +780,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d28c8118b62e354f9d9bb44fae7fcc3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  currentState: 1
-  walkSpeed: 4
-  runSpeed: 5.5
-  gravity: -19.62
-  rotationSpeed: 8
-  wanderRadius: 25
-  wanderPointTolerance: 1.5
-  idleTimeMin: 1.5
-  idleTimeMax: 4
-  detectionRadius: 30
+  chase: {fileID: 0}
+  health: {fileID: 0}
+  animator: {fileID: 4132798552237322510}
+  forceOmniDetection: 0
   followStartDistance: 6
   followStopDistance: 10
+  faceRotationSpeed: 10
   teleportIntervalMin: 10
   teleportIntervalMax: 20
-  attackTeleportDelay: 3
+  resetTeleportOnFollowStart: 1
+  attackTriggerParam: Attack
+  isDeadParam: IsDead
+  attackEventFailsafeSeconds: 3.5
   teleportMaxTries: 24
   teleportDistanceMin: 12
   teleportDistanceMax: 28
@@ -806,25 +805,8 @@ MonoBehaviour:
   radarJamMessageName: SetRadarJammed
   awakeTarget: {fileID: 0}
   awakeMessageName: WakeUp
-  animator: {fileID: 0}
-  speedParam: Speed
-  isDeadParam: IsDead
-  attackTriggerParam: Attack
-  death:
-    gravityWhenDead: 1
-    gravity: -19.62
-    lockXZOnDeath: 1
-    xzCorrectionSpeed: 120
-    lockTolerance: 0.0005
-    disableNavMeshAgent: 1
-    freezeRigidbody: 1
-    disableNonCharacterControllerColliders: 1
-    animator: {fileID: 0}
-    isDeadParam: IsDead
-    isDeadParamIsTrigger: 0
-    speedParam: Speed
-  debugLogs: 0
   debugGizmos: 1
+  debugLogs: 0
 --- !u!54 &6947583434630353599
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -874,6 +856,54 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!114 &3784137468579641514
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5948545402750696876}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9212c9cf3b97bef48916831ffc7b6fe6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  controller: {fileID: 6828241473626541720}
+  animator: {fileID: 4132798552237322510}
+  walkSpeed: 4
+  runSpeed: 4
+  rotationSpeed: 10
+  gravity: -19.62
+  patrolRadius: 30
+  arriveDistance: 1.5
+  patrolIdleMin: 1.5
+  patrolIdleMax: 4
+  playerMask:
+    serializedVersion: 2
+    m_Bits: 128
+  requirePlayerTag: 0
+  playerTag: Player
+  detectionRadius: 15
+  viewAngle: 120
+  eyeHeight: 1.5
+  forwardYawOffset: 0
+  requireLineOfSight: 1
+  losSampleCount: 3
+  fallbackTargetHeight: 1.8
+  sample01_A: 0.85
+  sample01_B: 0.55
+  sample01_C: 0.25
+  investigateArriveDistance: 1.5
+  postInvestigateForwardSeconds: 3
+  searchDuration: 6
+  searchRadius: 8
+  searchIdleMin: 0.5
+  searchIdleMax: 1.5
+  speedParam: Speed
+  speedDamp: 7
+  debugGizmos: 1
+  debugDrawLOS: 0
+  debugLogState: 0
 --- !u!1 &6012487220480934788
 GameObject:
   m_ObjectHideFlags: 0

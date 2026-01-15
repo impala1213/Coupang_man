@@ -77,6 +77,8 @@ public class ThirdPersonCamera : MonoBehaviour
         if (controlPitchWithMouse)
         {
             float my = Input.GetAxis("Mouse Y"); // DO NOT multiply by deltaTime
+            PlayerController pc = target.GetComponent<PlayerController>();
+            if (pc != null && pc.IsControlLocked) my = 0f;
             if (invertY) my = -my;
             currentPitch = Mathf.Clamp(currentPitch - my * mouseSensitivity, minPitch, maxPitch);
         }

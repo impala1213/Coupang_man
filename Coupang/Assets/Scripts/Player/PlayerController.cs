@@ -10,6 +10,25 @@ public class PlayerController : MonoBehaviour
     public float jumpForce = 5f;
     public float gravity = -19.62f;
 
+    [Header("Energy")]
+    [Tooltip("Optional. If null, will be resolved from this GameObject.")]
+    public Energy energy;
+
+    [Tooltip("Energy drain units while idle (time limit).")]
+    public int idleDrainUnits = 1;
+
+    [Tooltip("Additional drain units while sprinting (Shift).")]
+    public int sprintDrainUnits = 3;
+
+    [Tooltip("Additional drain units while flashlight is ON (F).")]
+    public int flashlightDrainUnits = 2;
+
+    [Header("Flashlight")]
+    [Tooltip("Optional. If null, will be resolved from children.")]
+    public PlayerFlashlight flashlight;
+
+    public KeyCode flashlightKey = KeyCode.F;
+
     [Header("Interaction")]
     public float interactDistance = 3f;
     public LayerMask interactMask;
@@ -46,9 +65,21 @@ public class PlayerController : MonoBehaviour
     private CharacterController controller;
     private float verticalVel;
 
+    private bool isSprinting;
+
     private Vector3 knockbackVelocity;
     private bool isKnockedDown;
     private float knockdownTimer;
+
+    public bool IsControlLocked
+    {
+        get
+        {
+            if (isKnockedDown) return true;
+            if (energy != null && energy.IsDepleted) return true;
+            return false;
+        }
+    }
 
     private PlayerInteractableBase currentInteractable;
     private bool interactUseHeld;
@@ -65,6 +96,12 @@ public class PlayerController : MonoBehaviour
     void Awake()
     {
         controller = GetComponent<CharacterController>();
+
+        if (!energy)
+            energy = GetComponent<Energy>();
+
+        if (!flashlight)
+            flashlight = GetComponentInChildren<PlayerFlashlight>(true);
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
@@ -77,6 +114,7 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        HandleFlashlightToggle();
         Move();
         UpdateInteractableFocusAndTick();
         HandleHotbar();
@@ -92,10 +130,50 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+
+    void HandleFlashlightToggle()
+    {
+        if (!flashlight) return;
+
+        // If control is locked, force flashlight OFF.
+        if (IsControlLocked)
+        {
+            if (flashlight.IsOn) flashlight.SetOn(false);
+            return;
+        }
+
+        if (Input.GetKeyDown(flashlightKey))
+        {
+            // Do not allow turning ON when energy is already depleted.
+            if (energy != null && energy.IsDepleted) return;
+            flashlight.Toggle();
+        }
+    }
+
+    void UpdateEnergyDrainUnitsAndTick()
+    {
+        if (!energy) return;
+
+        // Base drain is always active while energy is above 0.
+        int units = Mathf.Max(0, idleDrainUnits);
+
+        if (isSprinting) units += Mathf.Max(0, sprintDrainUnits);
+        if (flashlight != null && flashlight.IsOn) units += Mathf.Max(0, flashlightDrainUnits);
+
+        energy.SetDrainUnits(units);
+        energy.Tick(Time.deltaTime);
+
+        // If energy depleted this frame, lock controls immediately and turn off flashlight.
+        if (energy.IsDepleted && flashlight != null && flashlight.IsOn)
+            flashlight.SetOn(false);
+
+        if (energy.IsDepleted)
+            isSprinting = false;
+    }
     void Move()
     {
         bool grounded = controller.isGrounded;
-        bool blockInput = isKnockedDown;
+        bool blockInput = IsControlLocked;
 
         float h = blockInput ? 0f : Input.GetAxisRaw("Horizontal");
         float v = blockInput ? 0f : Input.GetAxisRaw("Vertical");
@@ -103,7 +181,12 @@ public class PlayerController : MonoBehaviour
         Vector3 moveLocal = new Vector3(h, 0f, v).normalized;
         Vector3 moveWorld = transform.TransformDirection(moveLocal);
 
-        float baseSpeed = Input.GetKey(KeyCode.LeftShift) ? sprintSpeed : walkSpeed;
+        bool wantsSprint = (!blockInput && Input.GetKey(KeyCode.LeftShift));
+        isSprinting = wantsSprint && (moveLocal.sqrMagnitude > 0.001f);
+        float baseSpeed = isSprinting ? sprintSpeed : walkSpeed;
+        UpdateEnergyDrainUnitsAndTick();
+        blockInput = IsControlLocked;
+        if (blockInput) { moveLocal = Vector3.zero; moveWorld = Vector3.zero; isSprinting = false; baseSpeed = 0f; }
 
         Vector3 horizontalVel = moveWorld * baseSpeed;
         Vector3 knockHoriz = new Vector3(knockbackVelocity.x, 0f, knockbackVelocity.z);
@@ -143,6 +226,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleHotbar()
     {
+        if (IsControlLocked) return;
         if (!inventory) return;
 
         if (Input.GetKeyDown(KeyCode.Alpha1)) inventory.SetActiveIndex(0);
@@ -154,6 +238,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleActions()
     {
+        if (IsControlLocked) return;
         // ���� E key: lever first, otherwise pickup item ����
         
         // E key: interactable first, otherwise pickup item
@@ -232,6 +317,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleCarrierDropHold()
     {
+        if (IsControlLocked) return;
         if (!carrierDropHolding)
             return;
 
@@ -292,6 +378,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleCarrierInspect()
     {
+        if (IsControlLocked) return;
         if (carrierSlotUI == null) return;
 
         bool eHeld = Input.GetKey(KeyCode.E);
