@@ -337,6 +337,25 @@ public class WraithAI : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Chase-phase target validity check.
+    /// Unlike IsDetectable(), this ignores the view cone (and LOS) so the wraith
+    /// doesn't drop the target immediately and loop Roar after an attack.
+    /// </summary>
+    private bool IsPursuitValid(Transform targetRoot)
+    {
+        if (!IsTargetValid(targetRoot)) return false;
+
+        Vector3 to = targetRoot.position - transform.position;
+        float dist = new Vector3(to.x, 0f, to.z).magnitude;
+
+        // Allow a bit of hysteresis vs detectionRadius so we don't flicker at the edge.
+        if (dist > detectionRadius * 1.35f) return false;
+
+        return true;
+    }
+
+
     private void TickPatrol()
     {
         ReleaseVictimAndCamera();
@@ -420,13 +439,14 @@ public class WraithAI : MonoBehaviour
             return;
         }
 
-        if (!IsDetectable(chaseTarget))
+        // During Chase, do NOT use view-cone/LOS based detection.
+        // Otherwise the wraith will drop the target immediately and loop Roar.
+        if (!IsPursuitValid(chaseTarget))
         {
             chaseTarget = null;
             state = State.Patrol;
             return;
         }
-
         float d = HorizontalDistance(transform.position, chaseTarget.position);
         if (d <= grabStartRange)
         {
@@ -682,7 +702,7 @@ public class WraithAI : MonoBehaviour
         JumpToWalkState();
 
         // Resume chase if we still have a valid chase target.
-        if (chaseTarget != null && IsTargetValid(chaseTarget) && IsDetectable(chaseTarget))
+        if (chaseTarget != null && IsTargetValid(chaseTarget) && IsPursuitValid(chaseTarget))
             state = State.Chase;
         else
             state = State.Patrol;
@@ -700,7 +720,7 @@ public class WraithAI : MonoBehaviour
 
         JumpToWalkState();
 
-        if (abortToChase && chaseTarget != null && IsTargetValid(chaseTarget) && IsDetectable(chaseTarget))
+        if (abortToChase && chaseTarget != null && IsTargetValid(chaseTarget) && IsPursuitValid(chaseTarget))
             state = State.Chase;
         else
             state = State.Patrol;
