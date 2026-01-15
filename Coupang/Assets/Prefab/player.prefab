@@ -960,7 +960,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mouseSensitivity: 10
-  verticalRotationLimit: 55
+  verticalRotationLimit: 45
 --- !u!1001 &2844059040732846620
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -1,4 +1,4 @@
-﻿// Assets/Scripts/Creature/WraithAI.cs
+// Assets/Scripts/Creature/WraithAI.cs
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -7,7 +7,7 @@ using UnityEngine;
 [RequireComponent(typeof(Health))]
 public class WraithAI : MonoBehaviour
 {
-    private enum State { Patrol, Roar, Chase, GrabAnim, Attack, Dead }
+    private enum State { Patrol, Idle, Roar, Chase, GrabAnim, Attack, Dead }
 
     [Header("Refs")]
     public Animator animator;
@@ -36,6 +36,16 @@ public class WraithAI : MonoBehaviour
     public float wanderPointTolerance = 1.2f;
     public float idleTimeMin = 0.8f;
     public float idleTimeMax = 2.0f;
+
+
+    [Header("Idle After Action")]
+    [Tooltip("How long the wraith stays in Idle after a grab (non-target) or after an attack completes.")]
+    public float postActionIdleDuration = 5f;
+
+    [Tooltip("Animator state name for idle. If empty, no forced jump is performed.")]
+    public string idleStateName = "Wraith_idle";
+
+    private float postActionIdleTimer = 0f;
 
     [Header("Roar -> Chase")]
     public string roarTriggerParam = "Roar";
@@ -181,7 +191,7 @@ public class WraithAI : MonoBehaviour
         }
 
         // Acquire only when we are not in grab/attack.
-        if (state != State.GrabAnim && state != State.Attack && state != State.Dead)
+        if (state != State.GrabAnim && state != State.Attack && state != State.Idle && state != State.Dead)
         {
             scanTimer -= Time.deltaTime;
             if (scanTimer <= 0f)
@@ -194,6 +204,7 @@ public class WraithAI : MonoBehaviour
         switch (state)
         {
             case State.Patrol: TickPatrol(); break;
+            case State.Idle: TickIdle(); break;
             case State.Roar: TickRoar(); break;
             case State.Chase: TickChase(); break;
             case State.GrabAnim: TickGrabAnim(); break;
@@ -224,6 +235,7 @@ public class WraithAI : MonoBehaviour
 
     private void TryAcquireTargetIfNeeded()
     {
+        if (state == State.Idle) return;
         if (chaseTarget != null) return;
 
         Transform best = FindBestValidDetectableTargetRoot();
@@ -337,25 +349,6 @@ public class WraithAI : MonoBehaviour
         return true;
     }
 
-    /// <summary>
-    /// Chase-phase target validity check.
-    /// Unlike IsDetectable(), this ignores the view cone (and LOS) so the wraith
-    /// doesn't drop the target immediately and loop Roar after an attack.
-    /// </summary>
-    private bool IsPursuitValid(Transform targetRoot)
-    {
-        if (!IsTargetValid(targetRoot)) return false;
-
-        Vector3 to = targetRoot.position - transform.position;
-        float dist = new Vector3(to.x, 0f, to.z).magnitude;
-
-        // Allow a bit of hysteresis vs detectionRadius so we don't flicker at the edge.
-        if (dist > detectionRadius * 1.35f) return false;
-
-        return true;
-    }
-
-
     private void TickPatrol()
     {
         ReleaseVictimAndCamera();
@@ -439,14 +432,13 @@ public class WraithAI : MonoBehaviour
             return;
         }
 
-        // During Chase, do NOT use view-cone/LOS based detection.
-        // Otherwise the wraith will drop the target immediately and loop Roar.
-        if (!IsPursuitValid(chaseTarget))
+        if (!IsDetectable(chaseTarget))
         {
             chaseTarget = null;
             state = State.Patrol;
             return;
         }
+
         float d = HorizontalDistance(transform.position, chaseTarget.position);
         if (d <= grabStartRange)
         {
@@ -689,59 +681,93 @@ public class WraithAI : MonoBehaviour
         animator.Update(0f);
     }
 
+    private void JumpToIdleState()
+    {
+        if (animator == null || string.IsNullOrEmpty(idleStateName)) return;
+
+        animator.speed = 1f;
+
+        // Clear action params to avoid getting stuck
+        SetAttackParam(false);
+        if (!string.IsNullOrEmpty(grabTriggerParam)) animator.ResetTrigger(grabTriggerParam);
+        if (!string.IsNullOrEmpty(roarTriggerParam)) animator.ResetTrigger(roarTriggerParam);
+
+        const int layer = 0;
+        int hash = Animator.StringToHash(idleStateName);
+        animator.Play(hash, layer, 0f);
+        animator.Update(0f);
+    }
+
+    private void EnterPostActionIdle(bool clearChaseTarget)
+    {
+        if (animator != null) animator.speed = 1f;
+
+        // Stop any pending action flags.
+        SetAttackParam(false);
+        pendingAttack = false;
+        attackStateSeen = false;
+        attackAnimFinished = false;
+        grabStateSeen = false;
+        attackStartTimer = 0f;
+        postAttackTimer = 0f;
+
+        // Release victim/camera lock.
+        ReleaseVictimAndCamera();
+        victimTarget = null;
+        lockFacingActive = false;
+
+        if (clearChaseTarget) chaseTarget = null;
+
+        // Force Idle animation (if provided) and lock AI in Idle state.
+        postActionIdleTimer = Mathf.Max(0f, postActionIdleDuration);
+        state = State.Idle;
+
+        // Force animator speed param to 0 immediately (no smoothing tail).
+        smoothedSpeed = 0f;
+        if (animator != null && !string.IsNullOrEmpty(speedParam))
+            animator.SetFloat(speedParam, 0f);
+
+        JumpToIdleState();
+    }
+
+    private void TickIdle()
+    {
+        // Do not move. Hold for the configured duration.
+        postActionIdleTimer -= Time.deltaTime;
+
+        // Keep Speed parameter at 0 while idling (avoid drift from smoothing).
+        if (animator != null && !string.IsNullOrEmpty(speedParam))
+        {
+            smoothedSpeed = 0f;
+            animator.SetFloat(speedParam, 0f);
+        }
+
+        if (postActionIdleTimer > 0f) return;
+
+        // After idle, resume normal behavior.
+        state = State.Patrol;
+        patrolTarget = null;
+        idleTimer = Random.Range(idleTimeMin, idleTimeMax);
+    }
+
+
 
     private void AbortGrabToMovement()
     {
-        // Grab ended but no attack (or victim invalid) -> release victim and return to chase/patrol.
-        SetAttackParam(false);
-        ReleaseVictimAndCamera();
-        victimTarget = null;
-        pendingAttack = false;
-        lockFacingActive = false;
-
-        JumpToWalkState();
-
-        // Resume chase if we still have a valid chase target.
-        if (chaseTarget != null && IsTargetValid(chaseTarget) && IsPursuitValid(chaseTarget))
-            state = State.Chase;
-        else
-            state = State.Patrol;
+        // Grab ended but no attack (or victim invalid) -> release victim and go Idle for a bit.
+        EnterPostActionIdle(clearChaseTarget: false);
     }
 
     private void EndAttackToMovement(bool abortToChase)
     {
-        // Attack failed/aborted -> release and resume movement.
-        SetAttackParam(false);
-        ReleaseVictimAndCamera();
-        victimTarget = null;
-        pendingAttack = false;
-        lockFacingActive = false;
-
-
-        JumpToWalkState();
-
-        if (abortToChase && chaseTarget != null && IsTargetValid(chaseTarget) && IsPursuitValid(chaseTarget))
-            state = State.Chase;
-        else
-            state = State.Patrol;
+        // Aborted attack -> still go Idle briefly to avoid instant re-engage.
+        EnterPostActionIdle(clearChaseTarget: !abortToChase);
     }
 
     private void EndAttackToPatrol()
     {
-        // Attack succeeded -> release and return to patrol.
-        if (animator != null) animator.speed = 1f;
-
-        SetAttackParam(false);
-        ReleaseVictimAndCamera();
-        victimTarget = null;
-        pendingAttack = false;
-        lockFacingActive = false;
-
-
-        JumpToWalkState();
-
-        chaseTarget = null;
-        state = State.Patrol;
+        // Attack completed -> go Idle for a bit before resuming.
+        EnterPostActionIdle(clearChaseTarget: true);
     }
 
     private void TickDead()
@@ -854,7 +880,7 @@ public class WraithAI : MonoBehaviour
     private void MoveTowards(Vector3 target, float speed)
     {
         if (controller == null || !controller.enabled) return;
-        if (state == State.Roar || state == State.GrabAnim || state == State.Attack) return;
+        if (state == State.Roar || state == State.Idle || state == State.GrabAnim || state == State.Attack || state == State.Dead) return;
 
         Vector3 dir = target - transform.position;
         dir.y = 0f;
