@@ -269,7 +269,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f7c141ea5fe036d4c8e8f89823180195, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  creatureKills: 3
+  creatureKills: 2
 --- !u!114 &5307541917130603299
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1073,6 +1073,10 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 2ec5c2ae48ca36e44bff376eae514c9f, type: 2}
     - target: {fileID: 6379207660507712359, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
       propertyPath: m_Layer
       value: 7

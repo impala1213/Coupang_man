@@ -1,13 +1,13 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1102 &-5181503855319824555
+--- !u!1102 &-7236947938113500023
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Player|Player_Walk
+  m_Name: Player_KnockBack
   m_Speed: 1
   m_CycleOffset: 0
   m_Transitions: []
@@ -20,7 +20,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -6876685336275503940, guid: 3d3bdf49bd0a54b4b80b976ae7a3aee5, type: 3}
+  m_Motion: {fileID: -9202619062706958348, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
   m_Tag: 
   m_SpeedParameter: 
   m_MirrorParameter: 
@@ -58,11 +58,11 @@ AnimatorStateMachine:
   m_Name: Base Layer
   m_ChildStates:
   - serializedVersion: 1
-    m_State: {fileID: -5181503855319824555}
-    m_Position: {x: 480, y: 120, z: 0}
+    m_State: {fileID: 8328740554784507378}
+    m_Position: {x: 440, y: 120, z: 0}
   - serializedVersion: 1
-    m_State: {fileID: 2883338801928188302}
-    m_Position: {x: 480, y: -10, z: 0}
+    m_State: {fileID: -7236947938113500023}
+    m_Position: {x: 430, y: -20, z: 0}
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
   m_EntryTransitions: []
@@ -72,15 +72,15 @@ AnimatorStateMachine:
   m_EntryPosition: {x: 50, y: 120, z: 0}
   m_ExitPosition: {x: 800, y: 120, z: 0}
   m_ParentStateMachinePosition: {x: 800, y: 20, z: 0}
-  m_DefaultState: {fileID: -5181503855319824555}
---- !u!1102 &2883338801928188302
+  m_DefaultState: {fileID: 8328740554784507378}
+--- !u!1102 &8328740554784507378
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Player_KnockBack
+  m_Name: Player|Player_Walk
   m_Speed: 1
   m_CycleOffset: 0
   m_Transitions: []
@@ -93,7 +93,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -9202619062706958348, guid: 3d3bdf49bd0a54b4b80b976ae7a3aee5, type: 3}
+  m_Motion: {fileID: -6876685336275503940, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
   m_Tag: 
   m_SpeedParameter: 
   m_MirrorParameter: 

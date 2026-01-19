@@ -61,6 +61,44 @@ public class WraithVictimLock : MonoBehaviour
     public bool rotateOnlyFromAnchor = true;
 
 
+    [Header("Camera Shake (Tremble)")]
+    [Tooltip("Enable trembling camera shake during capture/zoom.")]
+    public bool enableCameraShake = true;
+
+    [Tooltip("If true, shake strength ramps in using zoom01 (typically used for post-attack zoom-in).")]
+    public bool shakeOnlyDuringZoom = true;
+
+    [Range(0f, 1f)]
+    [Tooltip("zoom01 value at which shaking starts. Set to 0 to start shaking from the beginning of the zoom-in.")]
+    public float shakeZoomStart01 = 0.0f;
+
+    [Range(0f, 1f)]
+    [Tooltip("zoom01 value at which shaking reaches full strength.")]
+    public float shakeZoomEnd01 = 1.0f;
+
+    [Tooltip("Exponent for shake strength ramp (higher = more shake near the end).")]
+    public float shakeRampPower = 2.0f;
+
+    [Range(0f, 1f)]
+    [Tooltip("Minimum shake strength at the start of the ramp (0 = no shake at start, 0.2 = subtle shake at start).")]
+    public float shakeStartStrength01 = 0.15f;
+
+    [Tooltip("Shake frequency (noise speed).")]
+    public float shakeFrequency = 22f;
+
+    [Tooltip("Position shake amplitude in meters.")]
+    public float shakePosAmplitude = 0.015f;
+
+    [Tooltip("Rotation shake amplitude in degrees.")]
+    public float shakeRotAmplitude = 0.9f;
+
+    [Tooltip("If true, do not move camera position in rotateOnlyFromAnchor mode (rotation-only tremble).")]
+    public bool shakeRotationOnlyWhenAnchorLocked = true;
+
+    [Tooltip("Randomize shake seed every capture.")]
+    public bool randomizeShakeSeedEachCapture = true;
+
+
     [Header("Restore")]
     [Tooltip("Release 시 카메라 드라이버를 '다음 프레임'에 켜서 복구 충돌을 막음")]
     public bool enableDriversNextFrame = true;
@@ -85,6 +123,9 @@ public class WraithVictimLock : MonoBehaviour
 
     // Camera anchor (first-person cam preferred)
     private Transform cameraAnchor;
+
+    // Camera shake seed (randomized on capture)
+    private float shakeSeed;
 
 
     // Temporary camera
@@ -145,6 +186,9 @@ public class WraithVictimLock : MonoBehaviour
             if (lookDir.sqrMagnitude > 0.0004f)
                 desiredRot = Quaternion.LookRotation(lookDir.normalized, Vector3.up);
 
+            // Tremble during zoom (optional)
+            ApplyCameraShake(ref camPos, ref desiredRot, anchorLocked: true);
+
             if (hardLockCamera)
             {
                 activeCam.transform.SetPositionAndRotation(camPos, desiredRot);
@@ -170,6 +214,9 @@ public class WraithVictimLock : MonoBehaviour
         Quaternion orbitRot = activeCam.transform.rotation;
         if (orbitLookDir.sqrMagnitude > 0.0004f)
             orbitRot = Quaternion.LookRotation(orbitLookDir.normalized, Vector3.up);
+
+        // Tremble during zoom (optional)
+        ApplyCameraShake(ref desiredPos, ref orbitRot, anchorLocked: false);
 
         if (hardLockCamera)
         {
@@ -271,6 +318,9 @@ public class WraithVictimLock : MonoBehaviour
 
         pivotToMidY = ComputePivotToMidY();
         zoom01 = 0f;
+
+        if (randomizeShakeSeedEachCapture)
+            shakeSeed = Random.Range(0f, 1000f);
 
         // Disable player movement / controller
         if (playerControllerBehaviour != null)
@@ -408,6 +458,51 @@ if (!useTemporaryCamera)
     }
 
     public void SetCinematicZoom01(float t) => zoom01 = Mathf.Clamp01(t);
+
+    /// <summary>
+    /// Applies a small trembling offset based on Perlin noise.
+    /// Designed to be used during the post-attack zoom-in phase.
+    /// </summary>
+    private void ApplyCameraShake(ref Vector3 camPos, ref Quaternion camRot, bool anchorLocked)
+    {
+        if (!enableCameraShake) return;
+
+        float strength = 1f;
+        if (shakeOnlyDuringZoom)
+        {
+            // Don't shake before the zoom-in begins.
+            if (zoom01 < shakeZoomStart01) return;
+
+            float denom = Mathf.Max(0.0001f, shakeZoomEnd01 - shakeZoomStart01);
+            float u = Mathf.Clamp01((zoom01 - shakeZoomStart01) / denom);
+
+            // Ramp (0..1) and then map to [startStrength..1].
+            u = Mathf.Pow(u, Mathf.Max(0.01f, shakeRampPower));
+            float start = Mathf.Clamp01(shakeStartStrength01);
+            strength = Mathf.Lerp(start, 1f, u);
+        }
+
+        float freq = Mathf.Max(0.01f, shakeFrequency);
+        float t = Time.unscaledTime * freq;
+
+        // 0..1 -> -1..1
+        float nx = Mathf.PerlinNoise(shakeSeed + 1.17f, t) * 2f - 1f;
+        float ny = Mathf.PerlinNoise(shakeSeed + 2.33f, t) * 2f - 1f;
+        float nr1 = Mathf.PerlinNoise(shakeSeed + 3.71f, t) * 2f - 1f;
+        float nr2 = Mathf.PerlinNoise(shakeSeed + 4.91f, t) * 2f - 1f;
+
+        if (!(anchorLocked && shakeRotationOnlyWhenAnchorLocked))
+        {
+            Vector3 right = camRot * Vector3.right;
+            Vector3 up = camRot * Vector3.up;
+            camPos += (right * nx + up * ny) * (shakePosAmplitude * strength);
+        }
+
+        // Small rotation jitter (degrees)
+        float pitch = nr1 * (shakeRotAmplitude * strength);
+        float yaw = nr2 * (shakeRotAmplitude * strength);
+        camRot = camRot * Quaternion.Euler(pitch, yaw, 0f);
+    }
 
     private IEnumerator EnableDriversNextFrame()
     {
