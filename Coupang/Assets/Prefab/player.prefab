@@ -80,6 +80,7 @@ GameObject:
   - component: {fileID: 2923228301986316129}
   - component: {fileID: 5114586506865920236}
   - component: {fileID: 5307541917130603299}
+  - component: {fileID: 7273977975258630571}
   m_Layer: 7
   m_Name: player
   m_TagString: Player
@@ -292,6 +293,28 @@ MonoBehaviour:
   startOn: 0
   leftLight: {fileID: 0}
   rightLight: {fileID: 0}
+--- !u!95 &7273977975258630571
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4085519168744559420}
+  m_Enabled: 1
+  m_Avatar: {fileID: 9000000, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
+  m_Controller: {fileID: 9100000, guid: 2ec5c2ae48ca36e44bff376eae514c9f, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &5026866159600583610
 GameObject:
   m_ObjectHideFlags: 0
@@ -843,7 +866,7 @@ Camera:
     height: 1
   near clip plane: 0.1
   far clip plane: 5000
-  field of view: 65
+  field of view: 45
   orthographic: 0
   orthographic size: 10
   m_Depth: -1
@@ -1055,7 +1078,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
       propertyPath: m_Name
-      value: Player
+      value: Player Visual
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
       propertyPath: m_Layer
@@ -1097,7 +1120,8 @@ PrefabInstance:
       propertyPath: m_Layer
       value: 7
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 5866666021909216657, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects:
     - targetCorrespondingSourceObject: {fileID: -3757496329996176008, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
