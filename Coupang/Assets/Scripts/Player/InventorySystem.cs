@@ -14,7 +14,35 @@ public class InventorySystem : MonoBehaviour
 
     [Header("Carrier Mount")]
     [Tooltip("Player pivot where the carrier object is attached when equipped.")]
-    public Transform carrierMountPivot;   // e.g., player/CarrierPivot
+    public Transform carrierMountPivot; // e.g., player/CarrierPivot
+
+    [Header("Held Visual (in-hand)")]
+    [Tooltip("If true, spawns a visual instance of the active item and snaps it to hand sockets.")]
+    public bool spawnHeldVisual = true;
+
+    [Tooltip("Socket name under Player hierarchy for one-hand items.")]
+    public string rightHandSocketName = "RightHandSocket";
+
+    [Tooltip("Socket name under Player hierarchy for two-hand carry items.")]
+    public string carrySocketName = "CarrySocket";
+
+    [Tooltip("Grip transform name inside item prefab for one-hand attach.")]
+    public string oneHandGripName = "Grip_R";
+
+    [Tooltip("Grip transform name inside item prefab for two-hand/carry attach.")]
+    public string carryGripName = "CarryGrip";
+
+    [Tooltip("Disable all colliders on held visual instance.")]
+    public bool disableCollidersOnHeld = true;
+
+    [Tooltip("Disable all rigidbodies on held visual instance.")]
+    public bool disableRigidbodiesOnHeld = true;
+
+    [Tooltip("Disable WorldItem component on held visual instance.")]
+    public bool disableWorldItemOnHeld = true;
+
+    [Tooltip("Disable PickupInteractable on held visual instance if present.")]
+    public bool disablePickupInteractableOnHeld = true;
 
     [Header("State (read-only)")]
     public int activeIndex = 0;
@@ -26,6 +54,8 @@ public class InventorySystem : MonoBehaviour
     {
         public ItemDefinition def;
         public int size;
+
+        // Optional durability snapshot (kept for compatibility even if you later remove durability).
         public int durCurrent = -1;
         public int durMax = -1;
     }
@@ -38,38 +68,58 @@ public class InventorySystem : MonoBehaviour
 
     public List<Slot> slots = new List<Slot>();
 
-    void Awake()
-    {
-        // Ensure slot count
-        if (slots.Count != slotCount)
-        {
-            slots.Clear();
-            for (int i = 0; i < slotCount; i++)
-                slots.Add(new Slot());
-        }
+    // Held visual runtime
+    private Transform _rightHandSocket;
+    private Transform _carrySocket;
+    private GameObject _heldInstance;
 
+    private void Awake()
+    {
+        EnsureSlots();
         activeIndex = Mathf.Clamp(activeIndex, 0, slotCount - 1);
 
-        // Auto-wire carrier mount pivot if not set.
-        if (!carrierMountPivot)
-        {
-            var player = GetComponentInParent<PlayerController>();
-            if (player != null)
-            {
-                var pivot = player.transform.Find("CarrierPivot");
-                carrierMountPivot = pivot != null ? pivot : player.transform;
-            }
-            else
-            {
-                carrierMountPivot = transform;
-            }
-        }
+        AutoWireCarrierMountPivot();
 
         if (!carrier)
             carrier = UnityEngine.Object.FindFirstObjectByType<CarrierController>();
+
+        ResolveSockets();
+        RefreshHeldVisual();
     }
 
-    // ¦¡¦¡ Query ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
+    private void OnDestroy()
+    {
+        DestroyHeldVisual();
+    }
+
+    private void EnsureSlots()
+    {
+        if (slots.Count == slotCount) return;
+
+        slots.Clear();
+        for (int i = 0; i < slotCount; i++)
+            slots.Add(new Slot());
+    }
+
+    private void AutoWireCarrierMountPivot()
+    {
+        if (carrierMountPivot) return;
+
+        var player = GetComponentInParent<PlayerController>();
+        if (player != null)
+        {
+            var pivot = player.transform.Find("CarrierPivot");
+            carrierMountPivot = pivot != null ? pivot : player.transform;
+        }
+        else
+        {
+            carrierMountPivot = transform;
+        }
+    }
+
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Query
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     public bool IsEmpty(int i) =>
         i >= 0 && i < slots.Count && slots[i].stack == null;
 
@@ -85,24 +135,6 @@ public class InventorySystem : MonoBehaviour
             var s = slots[i].stack;
             if (s != null && s.def != null && s.def.isCarrier)
                 return true;
-        }
-        return false;
-    }
-
-    public bool HasSpaceFor(int required)
-    {
-        for (int start = 0; start <= slotCount - required; start++)
-        {
-            bool ok = true;
-            for (int k = 0; k < required; k++)
-            {
-                if (!IsEmpty(start + k))
-                {
-                    ok = false;
-                    break;
-                }
-            }
-            if (ok) return true;
         }
         return false;
     }
@@ -125,11 +157,13 @@ public class InventorySystem : MonoBehaviour
         return -1;
     }
 
-    // ¦¡¦¡ Control ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Control
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     public void SetActiveIndex(int idx)
     {
         activeIndex = Mathf.Clamp(idx, 0, slotCount - 1);
-        OnInventoryChanged?.Invoke();
+        NotifyChanged();
     }
 
     public bool TryPickupWorldItem(WorldItem worldItem)
@@ -146,7 +180,7 @@ public class InventorySystem : MonoBehaviour
         int where = FindContiguousSpace(need);
         if (where >= 0)
         {
-            // Durability snapshot
+            // Snapshot durability if the world item supports it
             int cur = -1, max = -1;
             if (worldItem.TryGetDurability(out var c, out var m))
             {
@@ -167,21 +201,21 @@ public class InventorySystem : MonoBehaviour
 
             if (def.isCarrier)
             {
-                // Carrier item: reuse the world instance and attach to player
+                // Carrier: keep the same world instance and attach it to player
                 HandleCarrierPickup(worldItem);
             }
             else
             {
-                // Normal item: destroy world instance
+                // Normal item: let WorldItem handle cleanup (usually destroy)
                 worldItem.OnPickedUp(true);
             }
 
             activeIndex = where;
-            OnInventoryChanged?.Invoke();
+            NotifyChanged();
             return true;
         }
 
-        // No contiguous inventory space: try mounting onto carrier if present.
+        // No inventory space => try mounting onto carrier if present
         if (HasCarrierInInventory())
         {
             if (!carrier)
@@ -202,28 +236,20 @@ public class InventorySystem : MonoBehaviour
 
     /// <summary>
     /// Drop active item to world as a new prefab (non-carrier items only).
-    /// Carrier items are dropped via PlayerController + CarrierController.
+    /// IMPORTANT: Always call WorldItem.OnDropped so the item re-enables physics/colliders properly.
     /// </summary>
     public bool DropActiveItem(Transform dropOrigin, Vector3 forward)
     {
-        var head = (activeIndex >= 0 && activeIndex < slots.Count)
-            ? slots[activeIndex].stack
-            : null;
-
+        var head = GetActiveStack();
         if (head == null || head.def == null)
             return false;
 
         var def = head.def;
-        if (def.isCarrier)
+
+        // Carrier dropping is handled separately (hold G)
+        if (!def.isCarrier)
         {
-            // Carrier dropping is handled separately (hold G).
-            Debug.Log("[InventorySystem] DropActiveItem ignored for carrier item.");
-        }
-        else
-        {
-            Vector3 pos = dropOrigin
-                ? dropOrigin.position + forward * 0.6f + Vector3.up * 0.5f
-                : transform.position + transform.forward * 0.6f + Vector3.up * 0.5f;
+            Vector3 pos = ComputeDropPos(dropOrigin, forward);
 
             if (def.worldPrefab)
             {
@@ -235,34 +261,54 @@ public class InventorySystem : MonoBehaviour
 
                 if (head.durCurrent >= 0 || head.durMax > 0)
                     wi.ApplyDurability(head.durCurrent, head.durMax, true);
+
+                // âœ… Critical fix: restore to "world state" (colliders/rigidbody/gravity/visibility)
+                wi.OnDropped(pos, Vector3.zero);
             }
         }
 
         ClearStackFromSlots(head);
-        OnInventoryChanged?.Invoke();
+        NotifyChanged();
         return true;
     }
 
     /// <summary>
-    /// Called when the player drops the carrier as a bundle (hold G).
-    /// Only removes the carrier item from inventory; the world carrier object
-    /// is handled by CarrierController.DropAsBundle.
+    /// Only removes the carrier item from inventory.
+    /// The actual world drop is done by CarrierController.DropAsBundle.
     /// </summary>
     public bool DropCarrierAsBundle(Transform dropOrigin, Vector3 forward)
     {
-        if (activeIndex < 0 || activeIndex >= slots.Count)
-            return false;
-
-        var head = slots[activeIndex].stack;
+        var head = GetActiveStack();
         if (head == null || head.def == null || !head.def.isCarrier)
             return false;
 
         ClearStackFromSlots(head);
-        OnInventoryChanged?.Invoke();
+        NotifyChanged();
         return true;
     }
 
-    // ¦¡¦¡ Internal helpers ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Internals
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    private ItemStackData GetActiveStack()
+    {
+        if (activeIndex < 0 || activeIndex >= slots.Count) return null;
+        return slots[activeIndex].stack;
+    }
+
+    private Vector3 ComputeDropPos(Transform origin, Vector3 forward)
+    {
+        if (origin)
+            return origin.position + forward * 0.6f + Vector3.up * 0.5f;
+
+        return transform.position + transform.forward * 0.6f + Vector3.up * 0.5f;
+    }
+
+    private void NotifyChanged()
+    {
+        OnInventoryChanged?.Invoke();
+        RefreshHeldVisual();
+    }
 
     /// <summary>
     /// Clear all slots referencing this stack and adjust activeIndex.
@@ -277,7 +323,7 @@ public class InventorySystem : MonoBehaviour
                 slots[i].stack = null;
         }
 
-        // Move activeIndex left if there are consecutive empty slots.
+        // Move activeIndex left if there are consecutive empty slots
         while (activeIndex > 0 &&
                slots[activeIndex].stack == null &&
                slots[activeIndex - 1].stack == null)
@@ -287,8 +333,7 @@ public class InventorySystem : MonoBehaviour
     }
 
     /// <summary>
-    /// Attach the picked-up carrier world instance to the player pivot and
-    /// configure it for equipped state.
+    /// Attach the picked-up carrier world instance to the player pivot and configure it for equipped state.
     /// </summary>
     private void HandleCarrierPickup(WorldItem worldItem)
     {
@@ -301,13 +346,12 @@ public class InventorySystem : MonoBehaviour
             return;
         }
 
-        // Equipped carrier should not be re-parented by ContainerAutoParent.
+        // Prevent other systems from re-parenting this carrier while equipped
         worldItem.ignoreContainerAutoParent = true;
 
-        // Store carrier reference on inventory.
         carrier = cc;
 
-        // Attach under mount pivot (usually player's back).
+        // Attach under mount pivot (usually player's back)
         if (carrierMountPivot)
         {
             Transform t = cc.transform;
@@ -316,7 +360,7 @@ public class InventorySystem : MonoBehaviour
             t.localRotation = Quaternion.identity;
         }
 
-        // Configure physics while worn.
+        // Configure physics while worn
         if (!worldItem.rb) worldItem.rb = worldItem.GetComponent<Rigidbody>();
         if (worldItem.rb)
         {
@@ -326,20 +370,171 @@ public class InventorySystem : MonoBehaviour
             worldItem.rb.useGravity = false;
         }
 
+        // Disable colliders while equipped
         var cols = worldItem.GetComponentsInChildren<Collider>(true);
         foreach (var c in cols)
-            c.enabled = false;
+            if (c) c.enabled = false;
 
+        // Keep renderers on (so you can see the backpack)
         var rends = worldItem.GetComponentsInChildren<Renderer>(true);
         foreach (var r in rends)
-            r.enabled = true;
+            if (r) r.enabled = true;
 
-        // Push reference into PlayerController if possible.
+        // Push reference into PlayerController if possible
         if (carrierMountPivot)
         {
             var player = carrierMountPivot.GetComponentInParent<PlayerController>();
             if (player != null)
                 player.carrier = cc;
         }
+    }
+
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Held Visual (socket attach)
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    private void ResolveSockets()
+    {
+        Transform playerRoot = GetComponentInParent<PlayerController>() != null
+            ? GetComponentInParent<PlayerController>().transform
+            : transform;
+
+        _rightHandSocket = FindDeepChildBFS(playerRoot, rightHandSocketName);
+        _carrySocket = FindDeepChildBFS(playerRoot, carrySocketName);
+
+        if (!_rightHandSocket) _rightHandSocket = playerRoot;
+        if (!_carrySocket) _carrySocket = playerRoot;
+    }
+
+    private void RefreshHeldVisual()
+    {
+        if (!spawnHeldVisual)
+        {
+            DestroyHeldVisual();
+            return;
+        }
+
+        if (!_rightHandSocket || !_carrySocket)
+            ResolveSockets();
+
+        DestroyHeldVisual();
+
+        var def = ActiveDef();
+        if (!def) return;
+
+        // Carrier item should not be shown in hand
+        if (def.isCarrier) return;
+
+        if (!def.worldPrefab) return;
+
+        _heldInstance = UnityEngine.Object.Instantiate(def.worldPrefab);
+        _heldInstance.name = def.worldPrefab.name + "_Held";
+
+        // Disable physics/interaction on held instance
+        if (disableCollidersOnHeld)
+        {
+            var cols = _heldInstance.GetComponentsInChildren<Collider>(true);
+            foreach (var c in cols)
+                if (c) c.enabled = false;
+        }
+
+        if (disableRigidbodiesOnHeld)
+        {
+            var rbs = _heldInstance.GetComponentsInChildren<Rigidbody>(true);
+            foreach (var rb in rbs)
+            {
+                if (!rb) continue;
+                rb.isKinematic = true;
+                rb.useGravity = false;
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+        }
+
+        if (disableWorldItemOnHeld)
+        {
+            var wi = _heldInstance.GetComponent<WorldItem>();
+            if (wi) wi.enabled = false;
+        }
+
+        if (disablePickupInteractableOnHeld)
+        {
+            var pi = _heldInstance.GetComponent<PickupInteractable>();
+            if (pi) pi.enabled = false;
+        }
+
+        // Decide socket by grip availability:
+        // CarryGrip -> CarrySocket, else Grip_R -> RightHandSocket
+        Transform carryGrip = FindDeepChildBFS(_heldInstance.transform, carryGripName);
+        Transform oneHandGrip = FindDeepChildBFS(_heldInstance.transform, oneHandGripName);
+
+        Transform grip = carryGrip ? carryGrip : oneHandGrip;
+        Transform socket = carryGrip ? _carrySocket : _rightHandSocket;
+
+        SnapRootToSocket(_heldInstance.transform, grip, socket);
+    }
+
+    private void DestroyHeldVisual()
+    {
+        if (_heldInstance)
+        {
+            UnityEngine.Object.Destroy(_heldInstance);
+            _heldInstance = null;
+        }
+    }
+
+    private static Transform FindDeepChildBFS(Transform root, string name)
+    {
+        if (!root || string.IsNullOrEmpty(name)) return null;
+
+        var q = new Queue<Transform>();
+        q.Enqueue(root);
+
+        while (q.Count > 0)
+        {
+            var t = q.Dequeue();
+            if (t.name == name) return t;
+
+            for (int i = 0; i < t.childCount; i++)
+                q.Enqueue(t.GetChild(i));
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Snap root so that grip matches socket (position + rotation).
+    /// If grip is null, root is simply parented to socket with zero local transform.
+    /// </summary>
+    private static void SnapRootToSocket(Transform root, Transform grip, Transform socket)
+    {
+        if (!root || !socket) return;
+
+        if (!grip)
+        {
+            root.SetParent(socket, false);
+            root.localPosition = Vector3.zero;
+            root.localRotation = Quaternion.identity;
+            return;
+        }
+
+        // Matrix-based snap (stable)
+        root.SetParent(null, true);
+
+        Matrix4x4 socketM = socket.localToWorldMatrix;
+        Matrix4x4 rootToGrip = root.worldToLocalMatrix * grip.localToWorldMatrix;
+        Matrix4x4 desiredRootM = socketM * rootToGrip.inverse;
+
+        Vector3 pos = (Vector3)desiredRootM.GetColumn(3);
+        Vector3 forward = (Vector3)desiredRootM.GetColumn(2);
+        Vector3 up = (Vector3)desiredRootM.GetColumn(1);
+
+        forward.Normalize();
+        up = (up - Vector3.Dot(up, forward) * forward).normalized;
+        if (up.sqrMagnitude < 0.0001f) up = Vector3.up;
+
+        Quaternion rot = Quaternion.LookRotation(forward, up);
+
+        root.SetPositionAndRotation(pos, rot);
+        root.SetParent(socket, true);
     }
 }

@@ -50,6 +50,13 @@ public class MushroomAI : MonoBehaviour
     [Tooltip("Seconds to lock movement during hit animation.")]
     public float hitLockDuration = 0.4f;
 
+    [Header("Attack Lock")]
+    [Tooltip("Freeze duration for the whole attack state (includes recovery). If <= 0, auto = attackStartDelay + sporeDuration.")]
+    public float attackLockDuration = 0f;
+
+    [Tooltip("Freeze rotation during attack/hit.")]
+    public bool freezeRotationWhileBusy = true;
+
     [Header("Animation Params")]
     public string speedParam = "Speed";
     public string attackTriggerParam = "Attack";
@@ -73,6 +80,9 @@ public class MushroomAI : MonoBehaviour
     private float sporeActiveTimer;
     private bool sporeActive;
 
+    // NEW: total attack lock timer (covers recovery frames too)
+    private float attackLockTimer;
+
     private ParticleSystem liveSporeVfx;
 
     // Hit timing
@@ -84,8 +94,11 @@ public class MushroomAI : MonoBehaviour
     private float cachedRun;
     private float cachedRot;
 
-    // Track damage tick
+    // Damage tick
     private float damageTickTimer;
+
+    // NEW: shared freeze timer for chase (supports stacking)
+    private float busyFreezeTimer;
 
     void Awake()
     {
@@ -104,8 +117,6 @@ public class MushroomAI : MonoBehaviour
         if (health != null)
         {
             health.OnDeath += OnDeath;
-            // If your Health has OnDamaged/OnHit event, hook here.
-            // Otherwise, you can call TriggerHit() manually from wherever damage is applied.
         }
     }
 
@@ -113,6 +124,8 @@ public class MushroomAI : MonoBehaviour
     {
         if (health != null && health.IsDead())
             combatState = CombatState.Dead;
+
+        TickBusyFreeze();
 
         switch (combatState)
         {
@@ -141,26 +154,24 @@ public class MushroomAI : MonoBehaviour
     {
         if (chase == null) return;
 
-        // Only attack when player is visible (CreatureChase already handles LOS + investigate/search)
         Transform target = chase.VisibleTarget;
         if (target == null)
         {
-            RestoreChaseValues();
+            if (!IsBusyFrozen())
+                RestoreChaseValues();
             return;
         }
 
-        // Check distance
         float dist = HorizontalDistance(transform.position, target.position);
         if (dist > attackRange)
         {
-            RestoreChaseValues();
+            if (!IsBusyFrozen())
+                RestoreChaseValues();
             return;
         }
 
-        // Face target while about to attack (optional)
         FaceTowards(target.position, chase.rotationSpeed);
 
-        // Cooldown
         if (Time.time < lastAttackTime + attackCooldown) return;
 
         BeginAttack();
@@ -176,8 +187,12 @@ public class MushroomAI : MonoBehaviour
         sporeActive = false;
         damageTickTimer = 0f;
 
+        // NEW: lock timer covers whole attack (including recovery)
+        float autoLock = Mathf.Max(0.05f, attackStartDelay + sporeDuration);
+        attackLockTimer = (attackLockDuration > 0f) ? attackLockDuration : autoLock;
+
         if (lockChaseWhileBusy)
-            FreezeChase();
+            BeginBusyFreeze(attackLockTimer);
 
         if (animator != null && !string.IsNullOrEmpty(attackTriggerParam))
         {
@@ -185,7 +200,7 @@ public class MushroomAI : MonoBehaviour
             animator.SetTrigger(attackTriggerParam);
         }
 
-        if (debugLogs) Debug.Log($"[{name}] Mushroom BeginAttack");
+        if (debugLogs) Debug.Log($"[{name}] Mushroom BeginAttack (lock={attackLockTimer:0.00}s)");
     }
 
     // ----------------------------------------------------
@@ -193,11 +208,14 @@ public class MushroomAI : MonoBehaviour
     // ----------------------------------------------------
     private void TickAttacking()
     {
+        // Keep facing target during attack
         if (chase != null && chase.VisibleTarget != null)
         {
-            // During attack, allow only facing, no translation (we froze chase)
             FaceTowards(chase.VisibleTarget.position, 10f);
         }
+
+        // Total attack lock countdown
+        attackLockTimer -= Time.deltaTime;
 
         if (!sporeActive)
         {
@@ -216,9 +234,21 @@ public class MushroomAI : MonoBehaviour
             if (sporeActiveTimer <= 0f)
             {
                 EndSporeCloud();
-                combatState = CombatState.Normal;
-                RestoreChaseValues();
+                // IMPORTANT: Do NOT immediately return to Normal.
+                // Wait until attackLockTimer finishes to cover recovery frames.
             }
+        }
+
+        // End attack state only when total lock timer ends
+        if (attackLockTimer <= 0f)
+        {
+            if (sporeActive)
+                EndSporeCloud();
+
+            combatState = CombatState.Normal;
+            // Restore is handled by TickBusyFreeze() when freeze ends, but safe to restore here too.
+            if (!IsBusyFrozen())
+                RestoreChaseValues();
         }
     }
 
@@ -227,7 +257,6 @@ public class MushroomAI : MonoBehaviour
         sporeActive = true;
         sporeActiveTimer = Mathf.Max(0.1f, sporeDuration);
 
-        // VFX only
         if (sporeVfxPrefab != null)
         {
             Transform originT = attackOrigin != null ? attackOrigin : transform;
@@ -245,10 +274,18 @@ public class MushroomAI : MonoBehaviour
     private void EndSporeCloud()
     {
         sporeActive = false;
+
+        // Optional: stop the live VFX immediately (it will also auto-destroy)
+        if (liveSporeVfx != null)
+        {
+            liveSporeVfx.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            liveSporeVfx = null;
+        }
+
         if (debugLogs) Debug.Log($"[{name}] SporeCloud OFF");
     }
 
-    // DPS tick: to avoid per-frame damage spam, tick 4 times per second (0.25s)
+    // DPS tick: tick 4 times per second (0.25s)
     private void ApplySporeDamageTick()
     {
         damageTickTimer -= Time.deltaTime;
@@ -259,7 +296,6 @@ public class MushroomAI : MonoBehaviour
         Transform target = chase.VisibleTarget;
         if (target == null) return;
 
-        // Cone check (range + angle)
         Vector3 origin = (attackOrigin != null ? attackOrigin.position : transform.position);
         Vector3 to = target.position - origin;
         to.y = 0f;
@@ -271,11 +307,9 @@ public class MushroomAI : MonoBehaviour
         float angle = Vector3.Angle(transform.forward, to.normalized);
         if (angle > attackConeAngle * 0.5f) return;
 
-        // Apply damage (Health on player)
         Health playerHealth = target.GetComponent<Health>();
         if (playerHealth != null && !playerHealth.IsDead())
         {
-            // Convert DPS to tick damage
             float tickSeconds = 0.25f;
             int tickDamage = Mathf.Max(1, Mathf.RoundToInt(damagePerSecond * tickSeconds));
             playerHealth.ApplyDamage(tickDamage);
@@ -291,11 +325,8 @@ public class MushroomAI : MonoBehaviour
     {
         if (combatState == CombatState.Dead) return;
 
-        // If you don't want hit to interrupt attack, you can early return when Attacking.
-        // Here: hit interrupts attack.
         combatState = CombatState.HitStun;
 
-        // Stop cloud immediately
         if (sporeActive)
         {
             EndSporeCloud();
@@ -305,7 +336,7 @@ public class MushroomAI : MonoBehaviour
         hitTimer = Mathf.Max(0f, hitLockDuration);
 
         if (lockChaseWhileBusy)
-            FreezeChase();
+            BeginBusyFreeze(hitTimer);
 
         if (animator != null && !string.IsNullOrEmpty(hitTriggerParam))
         {
@@ -313,7 +344,7 @@ public class MushroomAI : MonoBehaviour
             animator.SetTrigger(hitTriggerParam);
         }
 
-        if (debugLogs) Debug.Log($"[{name}] HitStun");
+        if (debugLogs) Debug.Log($"[{name}] HitStun (lock={hitTimer:0.00}s)");
     }
 
     private void TickHitStun()
@@ -322,7 +353,8 @@ public class MushroomAI : MonoBehaviour
         if (hitTimer <= 0f)
         {
             combatState = CombatState.Normal;
-            RestoreChaseValues();
+            if (!IsBusyFrozen())
+                RestoreChaseValues();
         }
     }
 
@@ -332,14 +364,16 @@ public class MushroomAI : MonoBehaviour
     private void OnDeath(Health h)
     {
         combatState = CombatState.Dead;
-        FreezeChaseHard();
+
+        // Freeze indefinitely
+        if (lockChaseWhileBusy)
+            BeginBusyFreeze(-1f);
 
         if (animator != null && !string.IsNullOrEmpty(isDeadParam))
             animator.SetBool(isDeadParam, true);
 
         if (spawnDeathSpores)
         {
-            // VFX-only radial burst (optional) + gameplay radial cone slices
             StartDeathSporeBurst();
         }
 
@@ -348,17 +382,11 @@ public class MushroomAI : MonoBehaviour
 
     private void TickDead()
     {
-        // Stay dead pose. Do nothing.
+        // Do nothing.
     }
 
-    // ----------------------------------------------------
-    // Death spore burst: applies DPS around in radial directions for a short time
-    // (No projectiles. We approximate "around" by checking targets in radius & applying damage.)
-    // ----------------------------------------------------
     private void StartDeathSporeBurst()
     {
-        // Simple implementation: for the duration, apply radial tick damage to any player in range.
-        // If you have multiple players, you can change this to OverlapSphere for all players.
         StartCoroutine(DeathSporeRoutine());
     }
 
@@ -371,10 +399,7 @@ public class MushroomAI : MonoBehaviour
         {
             t -= tick;
 
-            // Damage any visible target in radius (or any player in radius if you prefer)
             Transform target = (chase != null) ? chase.VisibleTarget : null;
-
-            // If not currently visible, still allow death spores to hit if player is near:
             if (target == null)
             {
                 GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
@@ -400,7 +425,75 @@ public class MushroomAI : MonoBehaviour
     }
 
     // ----------------------------------------------------
-    // CreatureChase speed lock helpers
+    // Busy Freeze (local) - does NOT require changes in CreatureChase
+    // ----------------------------------------------------
+    private void BeginBusyFreeze(float durationSeconds)
+    {
+        if (chase == null) return;
+        if (!cachedChase) CacheChaseValues();
+
+        if (durationSeconds < 0f)
+        {
+            busyFreezeTimer = float.PositiveInfinity;
+        }
+        else
+        {
+            busyFreezeTimer = Mathf.Max(busyFreezeTimer, durationSeconds);
+        }
+
+        ApplyFreezeNow();
+    }
+
+    private void TickBusyFreeze()
+    {
+        if (chase == null) return;
+
+        if (busyFreezeTimer == float.PositiveInfinity)
+        {
+            ApplyFreezeNow();
+            return;
+        }
+
+        if (busyFreezeTimer > 0f)
+        {
+            busyFreezeTimer -= Time.deltaTime;
+            ApplyFreezeNow();
+            return;
+        }
+
+        // Freeze ended
+        if (IsBusyState())
+        {
+            // Still in Attacking/HitStun but timer hit 0: keep frozen as safety
+            ApplyFreezeNow();
+            return;
+        }
+
+        RestoreChaseValues();
+    }
+
+    private void ApplyFreezeNow()
+    {
+        if (chase == null) return;
+
+        chase.walkSpeed = 0f;
+        chase.runSpeed = 0f;
+        if (freezeRotationWhileBusy)
+            chase.rotationSpeed = 0f;
+    }
+
+    private bool IsBusyFrozen()
+    {
+        return busyFreezeTimer > 0f || busyFreezeTimer == float.PositiveInfinity;
+    }
+
+    private bool IsBusyState()
+    {
+        return combatState == CombatState.Attacking || combatState == CombatState.HitStun || combatState == CombatState.Dead;
+    }
+
+    // ----------------------------------------------------
+    // CreatureChase cache helpers
     // ----------------------------------------------------
     private void CacheChaseValues()
     {
@@ -419,28 +512,6 @@ public class MushroomAI : MonoBehaviour
         chase.walkSpeed = cachedWalk;
         chase.runSpeed = cachedRun;
         chase.rotationSpeed = cachedRot;
-    }
-
-    private void FreezeChase()
-    {
-        if (chase == null) return;
-        if (!cachedChase) CacheChaseValues();
-
-        chase.walkSpeed = 0f;
-        chase.runSpeed = 0f;
-        chase.rotationSpeed = 0f;
-    }
-
-    private void FreezeChaseHard()
-    {
-        if (chase == null) return;
-
-        // Make sure it never resumes detection/movement
-        chase.detectionRadius = 0f;
-        chase.playerMask = 0;
-        chase.walkSpeed = 0f;
-        chase.runSpeed = 0f;
-        chase.rotationSpeed = 0f;
     }
 
     // ----------------------------------------------------
@@ -469,7 +540,6 @@ public class MushroomAI : MonoBehaviour
     {
         if (!debugGizmos) return;
 
-        // Attack cone gizmo
         Vector3 origin = (attackOrigin != null ? attackOrigin.position : transform.position);
         float half = attackConeAngle * 0.5f;
 

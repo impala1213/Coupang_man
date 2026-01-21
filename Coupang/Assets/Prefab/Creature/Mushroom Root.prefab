@@ -131,7 +131,7 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 1.83
+  m_Height: 1.767124
   m_Radius: 0.44
   m_SlopeLimit: 45
   m_StepOffset: 0.3
@@ -170,7 +170,7 @@ MonoBehaviour:
   attackRange: 3
   attackConeAngle: 70
   attackCooldown: 2.4
-  attackStartDelay: 0.25
+  attackStartDelay: 0.5
   sporeDuration: 1.2
   damagePerSecond: 10
   attackOrigin: {fileID: 0}
@@ -182,6 +182,8 @@ MonoBehaviour:
   deathSporeDuration: 1
   deathDamagePerSecond: 12
   hitLockDuration: 0.4
+  attackLockDuration: 2
+  freezeRotationWhileBusy: 1
   speedParam: Speed
   attackTriggerParam: Attack
   hitTriggerParam: Hit
@@ -545,7 +547,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 868a8d4c3b3c0ae4da344bbd0a2ca2a8, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.908
+      value: -0.978
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 868a8d4c3b3c0ae4da344bbd0a2ca2a8, type: 3}
       propertyPath: m_LocalPosition.z

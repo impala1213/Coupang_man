@@ -80,6 +80,7 @@ GameObject:
   - component: {fileID: 2923228301986316129}
   - component: {fileID: 5114586506865920236}
   - component: {fileID: 5307541917130603299}
+  - component: {fileID: 7422801346218416718}
   - component: {fileID: 7273977975258630571}
   m_Layer: 7
   m_Name: player
@@ -148,24 +149,36 @@ MonoBehaviour:
   sprintSpeed: 7
   jumpForce: 8
   gravity: -19.62
-  energy: {fileID: 0}
+  energy: {fileID: 2923228301986316129}
   idleDrainUnits: 1
   sprintDrainUnits: 3
   flashlightDrainUnits: 2
-  flashlight: {fileID: 0}
+  flashlight: {fileID: 5307541917130603299}
   flashlightKey: 102
   interactDistance: 3
   interactMask:
     serializedVersion: 2
     m_Bits: 576
+  pickupRayRadius: 0.45
+  pickupLosBlockMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  excludeCarrierInAutoSelect: 1
   leverInteractDistance: 3
   leverMask:
     serializedVersion: 2
     m_Bits: 0
+  throwHoldThreshold: 0.25
+  throwChargeTime: 0.75
+  minThrowForce: 6
+  maxThrowForce: 16
+  throwUpBias: 0.08
+  throwSpin: 8
   cameraSwitcher: {fileID: 7854558863087492652}
   inventory: {fileID: 6933663667257268947}
   carrier: {fileID: 0}
   dropOrigin: {fileID: 0}
+  sockets: {fileID: 0}
   canBeKnockedBack: 1
   knockbackDamping: 3
   knockbackUpFactor: 0.3
@@ -211,6 +224,15 @@ MonoBehaviour:
   slotCount: 5
   carrier: {fileID: 0}
   carrierMountPivot: {fileID: 7500143538067534090}
+  spawnHeldVisual: 1
+  rightHandSocketName: RightHandSocket
+  carrySocketName: CarrySocket
+  oneHandGripName: Grip_R
+  carryGripName: CarryGrip
+  disableCollidersOnHeld: 1
+  disableRigidbodiesOnHeld: 1
+  disableItemScriptsOnHeld: 1
+  throwSelfDamage: 10
   activeIndex: 0
   slots: []
 --- !u!114 &774389386636692668
@@ -293,6 +315,21 @@ MonoBehaviour:
   startOn: 0
   leftLight: {fileID: 0}
   rightLight: {fileID: 0}
+--- !u!114 &7422801346218416718
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4085519168744559420}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c9255197fc3663458f4bc7bb6de614e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rightHandSocket: {fileID: 2296254304246638336}
+  carrySocket: {fileID: 8186424562861070311}
+  dropOrigin: {fileID: 8186424562861070311}
 --- !u!95 &7273977975258630571
 Animator:
   serializedVersion: 7
@@ -797,6 +834,37 @@ MonoBehaviour:
   smoothFollow: 1
   posSmoothTime: 0.06
   rotSmoothSpeed: 20
+--- !u!1 &8584874001159077276
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2296254304246638336}
+  m_Layer: 7
+  m_Name: LeftHand_Socket
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2296254304246638336
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8584874001159077276}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2703212975309732805}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &9011497561837021249
 GameObject:
   m_ObjectHideFlags: 0
@@ -1130,11 +1198,19 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -3757496329996176008, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1701226661533633519}
+    - targetCorrespondingSourceObject: {fileID: -9008433723056676391, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2296254304246638336}
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
 --- !u!4 &2374129125723209207 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
+  m_PrefabInstance: {fileID: 2844059040732846620}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2703212975309732805 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -9008433723056676391, guid: 2928ada5f5f227b45b4b7fe17945b684, type: 3}
   m_PrefabInstance: {fileID: 2844059040732846620}
   m_PrefabAsset: {fileID: 0}
 --- !u!4 &7827977844291596132 stripped

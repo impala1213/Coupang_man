@@ -1,18 +1,29 @@
-// Assets/Scripts/Item/WorldItem.cs
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 [DisallowMultipleComponent]
 public class WorldItem : MonoBehaviour
 {
-    // ─────────────────────────────────────────────
-    // Global registry for all active WorldItems
-    // ─────────────────────────────────────────────
+    // Global registry (kept)
     private static readonly List<WorldItem> s_allWorldItems = new List<WorldItem>();
     public static IReadOnlyList<WorldItem> AllWorldItems => s_allWorldItems;
 
     [Header("Definition")]
     public ItemDefinition definition;
+
+    [Header("Runtime State")]
+    public string instanceId;
+    public int stackCount = 1;
+
+    [Header("Durability (integrated)")]
+    public bool useDurability = true;
+    public int maxDurability = 100;
+    public int currentDurability = 100;
+
+    [Header("Impact Damage (integrated)")]
+    public bool enableImpactDamage = true;
+    public float impactMinSpeed = 6f;
+    public float impactDamagePerUnit = 5f;
 
     [Header("Runtime")]
     [HideInInspector] public Rigidbody rb;
@@ -20,49 +31,64 @@ public class WorldItem : MonoBehaviour
     private Collider[] _colliders;
     private Renderer[] _renderers;
 
-    // ── Carrier meta info ─────────────────────────────
+    // Carrier meta
     [HideInInspector] public bool isOnCarrier;
     [HideInInspector] public CarrierController carrierOwner;
     [HideInInspector] public int carrierSlotIndex = -1;
     [HideInInspector] public Transform carrierSlotPivot;
 
-    /// <summary>
-    /// If true, ContainerAutoParent should not touch this item.
-    /// Used for equipped carriers on player.
-    /// </summary>
     [HideInInspector] public bool ignoreContainerAutoParent;
 
-    /// <summary>Convenience: true if this item is a carrier item.</summary>
     public bool IsCarrierItem => definition != null && definition.isCarrier;
 
     // ─────────────────────────────────────────────
-    // Unity lifecycle
+    // ✅ Self-throw break ignore (only for thrower, temporary)
     // ─────────────────────────────────────────────
-    void Awake()
+    [Header("Throw Self-Ignore (runtime)")]
+    [SerializeField] private Transform throwerRoot;
+    [SerializeField] private float ignoreThrowerBreakUntil;
+
+    /// <summary>
+    /// Call right when the item is thrown, to prevent immediate self-collision from breaking it.
+    /// This does NOT disable physics collision. It only skips break-impulse check vs the thrower for a short window.
+    /// </summary>
+    public void ArmIgnoreBreakForThrower(Transform throwerRootTransform, float seconds)
     {
-        if (!rb) rb = GetComponent<Rigidbody>();
-        EnsureCaches();
+        throwerRoot = throwerRootTransform;
+        ignoreThrowerBreakUntil = Time.time + Mathf.Max(0f, seconds);
     }
 
-    void OnEnable()
+    private void Awake()
+    {
+        if (string.IsNullOrEmpty(instanceId))
+            instanceId = System.Guid.NewGuid().ToString("N");
+
+        if (!rb) rb = GetComponent<Rigidbody>();
+        EnsureCaches();
+
+        if (useDurability)
+        {
+            maxDurability = Mathf.Max(1, maxDurability);
+            currentDurability = Mathf.Clamp(currentDurability, 0, maxDurability);
+        }
+    }
+
+    private void OnEnable()
     {
         if (!s_allWorldItems.Contains(this))
             s_allWorldItems.Add(this);
     }
 
-    void OnDisable()
+    private void OnDisable()
     {
         s_allWorldItems.Remove(this);
     }
 
-    void OnDestroy()
+    private void OnDestroy()
     {
         s_allWorldItems.Remove(this);
     }
 
-    // ─────────────────────────────────────────────
-    // Internals
-    // ─────────────────────────────────────────────
     private void EnsureCaches()
     {
         if (_colliders == null || _colliders.Length == 0)
@@ -72,26 +98,23 @@ public class WorldItem : MonoBehaviour
             _renderers = GetComponentsInChildren<Renderer>(true);
     }
 
-    /// <summary>
-    /// Inventory pickup.
-    /// - destroyInstance = true  → destroy world instance (normal items)
-    /// - destroyInstance = false → only disable physics/colliders/renderers
-    /// Carrier items should use destroyInstance = false and be reused.
-    /// </summary>
+    // Pickup / Drop
     public void OnPickedUp(bool destroyInstance)
     {
         EnsureCaches();
 
+        // Reset throw ignore state on pickup
+        throwerRoot = null;
+        ignoreThrowerBreakUntil = 0f;
+
         bool isCarrier = IsCarrierItem;
 
-        // Normal items can be destroyed when picked up.
         if (destroyInstance && !isCarrier)
         {
             Destroy(gameObject);
             return;
         }
 
-        // Disable physics and interaction in world.
         if (!rb) rb = GetComponent<Rigidbody>();
         if (rb)
         {
@@ -104,88 +127,16 @@ public class WorldItem : MonoBehaviour
         if (_colliders != null)
         {
             foreach (var c in _colliders)
-            {
                 if (c) c.enabled = false;
-            }
         }
 
         if (_renderers != null)
         {
             foreach (var r in _renderers)
-            {
                 if (r) r.enabled = false;
-            }
         }
     }
 
-    /// <summary>
-    /// Called when this item is mounted onto a carrier slot.
-    /// Parent becomes the slot pivot, physics disabled, colliders disabled.
-    /// Scale is kept as it was in world; only position/rotation are adjusted.
-    /// </summary>
-    public void EnterCarrierMountMode(CarrierController carrier, int slotIndex, Transform slotPivot)
-    {
-        EnsureCaches();
-
-        carrierOwner = carrier;
-        carrierSlotIndex = slotIndex;
-        carrierSlotPivot = slotPivot;
-        isOnCarrier = true;
-
-        // While mounted on a carrier, parenting is owned by the carrier.
-        ignoreContainerAutoParent = false;
-
-        if (!rb) rb = GetComponent<Rigidbody>();
-        if (rb)
-        {
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-            rb.isKinematic = true;
-            rb.useGravity = false;
-        }
-
-        if (_colliders != null)
-        {
-            foreach (var c in _colliders)
-            {
-                if (c) c.enabled = false;
-            }
-        }
-
-        if (_renderers != null)
-        {
-            foreach (var r in _renderers)
-            {
-                if (r) r.enabled = true;
-            }
-        }
-
-        // Attach under slot pivot, but keep current world scale.
-        // SetParent(worldPositionStays: false) converts world scale → local scale
-        // so the visual scale remains exactly the same.
-        transform.SetParent(slotPivot, false);
-
-        if (definition != null)
-        {
-            Vector3 pos = definition.carrierLocalPosition;
-            Vector3 euler = definition.carrierLocalEuler;
-
-            // Only adjust local position and rotation.
-            // DO NOT change localScale → keep item scale as it was in world.
-            transform.localPosition = pos;
-            transform.localEulerAngles = euler;
-        }
-        else
-        {
-            transform.localPosition = Vector3.zero;
-            transform.localEulerAngles = Vector3.zero;
-        }
-    }
-
-    /// <summary>
-    /// Called when this item is released back into the world.
-    /// If it was mounted on a carrier, detach from the slot and restore physics.
-    /// </summary>
     public void OnDropped(Vector3 worldPos, Vector3 initialVelocity)
     {
         EnsureCaches();
@@ -199,7 +150,6 @@ public class WorldItem : MonoBehaviour
             carrierSlotPivot = null;
         }
 
-        // Once dropped to world, allow container/ship parenting again.
         ignoreContainerAutoParent = false;
 
         transform.position = worldPos;
@@ -214,45 +164,113 @@ public class WorldItem : MonoBehaviour
         if (_colliders != null)
         {
             foreach (var c in _colliders)
-            {
                 if (c) c.enabled = true;
-            }
         }
 
         if (_renderers != null)
         {
             foreach (var r in _renderers)
-            {
                 if (r) r.enabled = true;
-            }
         }
 
         if (definition && definition.worldPrefab)
             name = definition.worldPrefab.name;
     }
 
-    /// <summary>Durability snapshot read. Returns false if no Durability component.</summary>
+    // Durability API
     public bool TryGetDurability(out int current, out int max)
     {
-        current = 0;
-        max = 0;
-
-        var d = GetComponent<Durability>();
-        if (!d) return false;
-
-        current = d.current;
-        max = d.max;
-        return true;
+        current = currentDurability;
+        max = maxDurability;
+        return useDurability;
     }
 
-    /// <summary>Apply durability to a newly created drop prefab.</summary>
     public void ApplyDurability(int current, int max, bool clamp = true)
     {
-        var d = GetComponent<Durability>();
-        if (!d) d = gameObject.AddComponent<Durability>();
+        useDurability = true;
+        maxDurability = Mathf.Max(1, max > 0 ? max : maxDurability);
+        currentDurability = clamp ? Mathf.Clamp(current, 0, maxDurability) : current;
+    }
 
-        if (max > 0) d.max = max;
-        if (clamp) current = Mathf.Clamp(current, 0, d.max);
-        d.current = current;
+    public void ApplyDamage(int amount)
+    {
+        if (!useDurability) return;
+        if (amount <= 0) return;
+
+        currentDurability = Mathf.Clamp(currentDurability - amount, 0, maxDurability);
+        if (currentDurability <= 0)
+            OnBroken();
+    }
+
+    private void OnBroken()
+    {
+        if (definition != null && definition.breakable)
+        {
+            if (definition.brokenPrefab)
+            {
+                Instantiate(definition.brokenPrefab, transform.position, transform.rotation);
+                Destroy(gameObject);
+                return;
+            }
+
+            gameObject.SetActive(false);
+            return;
+        }
+
+        Destroy(gameObject);
+    }
+
+    // Impact damage + break impulse (integrated)
+    private void OnCollisionEnter(Collision col)
+    {
+        if (!definition) return;
+
+        // ✅ Ignore break-impulse ONLY when colliding with the thrower (self), for a short window.
+        // Other players still count as valid collisions (teamkill allowed).
+        if (throwerRoot != null && Time.time < ignoreThrowerBreakUntil)
+        {
+            Transform otherRoot = col.collider != null ? col.collider.transform.root : null;
+            if (otherRoot == throwerRoot)
+            {
+                // We skip only the "break impulse" logic against self.
+                // You can also skip impact damage against self if you want absolute safety:
+                // return;
+            }
+            else
+            {
+                // not self
+            }
+        }
+
+        // Break impulse check (definition-based)
+        if (definition.breakable)
+        {
+            // If self-collision in ignore window, skip this block
+            if (throwerRoot != null && Time.time < ignoreThrowerBreakUntil)
+            {
+                Transform otherRoot = col.collider != null ? col.collider.transform.root : null;
+                if (otherRoot == throwerRoot)
+                    return;
+            }
+
+            float mass = (rb != null) ? rb.mass : 1f;
+            float impulse = col.relativeVelocity.magnitude * mass;
+            if (impulse >= definition.breakImpulseThreshold)
+            {
+                OnBroken();
+                return;
+            }
+        }
+
+        // Impact-to-durability damage
+        if (enableImpactDamage && useDurability)
+        {
+            float speed = col.relativeVelocity.magnitude;
+            if (speed >= impactMinSpeed)
+            {
+                int dmg = Mathf.RoundToInt((speed - impactMinSpeed) * impactDamagePerUnit);
+                if (dmg > 0) ApplyDamage(dmg);
+            }
+        }
     }
 }

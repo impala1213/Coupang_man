@@ -12,12 +12,8 @@ GameObject:
   - component: {fileID: 7956179651236080546}
   - component: {fileID: 4390569180902317261}
   - component: {fileID: 6686076876144876446}
-  - component: {fileID: 1113673582431846235}
-  - component: {fileID: 1582182870244601531}
-  - component: {fileID: 7216851662328307162}
-  - component: {fileID: 3227698365231234657}
   - component: {fileID: -3307160941821665628}
-  - component: {fileID: -3909847846634834637}
+  - component: {fileID: -2721737430391749071}
   m_Layer: 6
   m_Name: MeatCan
   m_TagString: WorldItem
@@ -120,66 +116,6 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 2
---- !u!114 &1113673582431846235
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2635283057471754944}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 60be83410e9621b4c9a2e519fd7432b5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  definition: {fileID: 11400000, guid: 1995a7efd85113243b9761ee1cb486ad, type: 2}
-  rb: {fileID: 6686076876144876446}
-  isOnCarrier: 0
-  carrierOwner: {fileID: 0}
-  carrierSlotIndex: -1
-  carrierSlotPivot: {fileID: 0}
-  ignoreContainerAutoParent: 0
---- !u!114 &1582182870244601531
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2635283057471754944}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3bb2eca52f9f6bd4389ca33a14835487, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  definition: {fileID: 11400000, guid: 1995a7efd85113243b9761ee1cb486ad, type: 2}
---- !u!114 &7216851662328307162
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2635283057471754944}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b9ef59ab4ebbfda449f0b94c7f761731, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  minSpeed: 6
-  damagePerUnit: 5
---- !u!114 &3227698365231234657
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2635283057471754944}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 40b0279f9b9c4f2418e26ac2bfb8cb3e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  max: 150
-  current: 150
 --- !u!65 &-3307160941821665628
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -201,7 +137,7 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.37074694, y: 0.094646744, z: 0.2530015}
   m_Center: {x: 0.00709787, y: 0.017440278, z: 0.016255893}
---- !u!114 &-3909847846634834637
+--- !u!114 &-2721737430391749071
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -210,6 +146,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 2635283057471754944}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: dd59b3352671bf84a8344f139b268ae8, type: 3}
+  m_Script: {fileID: 11500000, guid: f83287a3508e2ea4a8a93b059226df6c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  modeOverride: 1
+  gripR: {fileID: 0}
+  carryGrip: {fileID: 0}
+  handleA: {fileID: 0}
+  handleB: {fileID: 0}
+  moveSpeedMultiplier: 1
+  viewOcclusion: 0
+  throwSelfDamage: 5
+  oneHandOverride: {fileID: 0}
+  twoHandOverride: {fileID: 0}
+  autoFindByNameOnReset: 1

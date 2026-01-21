@@ -1,4 +1,6 @@
 // Assets/Scripts/Player/PlayerController.cs
+using System;
+using System.Reflection;
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
@@ -59,12 +61,33 @@ public class PlayerController : MonoBehaviour
     public float carrierInspectMaxDistance = 4f;
     public CarrierSlotUI carrierSlotUI;
 
+    [Header("Drop / Throw (G)")]
+    [Tooltip("If G is held longer than this, it becomes a throw (instead of a drop).")]
+    public float throwHoldTime = 0.35f;
+
+    [Tooltip("Extra hold time after throwHoldTime to reach full throw power.")]
+    public float throwChargeTime = 1.25f;
+
+    [Tooltip("Min/Max throw force (m/s).")]
+    public float throwMinForce = 6f;
+    public float throwMaxForce = 18f;
+
+    [Tooltip("Upward bias added to aim direction. Higher = more lob arc.")]
+    public float throwMinUpBias = 0.05f;
+    public float throwMaxUpBias = 0.35f;
+
+    [Tooltip("Min/Max spin magnitude.")]
+    public float throwMinSpin = 2f;
+    public float throwMaxSpin = 10f;
+
+    [Tooltip("Radius to find the freshly spawned dropped item.")]
+    public float throwFindRadius = 2.0f;
+
     [Header("Debug")]
     public bool debugLever;
 
     private CharacterController controller;
     private float verticalVel;
-
     private bool isSprinting;
 
     private Vector3 knockbackVelocity;
@@ -93,6 +116,20 @@ public class PlayerController : MonoBehaviour
     private float carrierInspectTimer;
     private CarrierController carrierInspectTarget;
 
+    // normal item drop/throw (G tap/hold)
+    private bool itemHoldActive;
+    private float itemHoldTimer;
+    private int itemHoldIndex;
+
+    // Optional: definition-based carry lock support (reflection)
+    private static bool s_carryKindChecked;
+    private static FieldInfo s_carryKindField;
+
+    // ItemData reflection cache (NO compile-time dependency)
+    private static bool s_itemDataChecked;
+    private static Type s_itemDataType;
+    private static FieldInfo s_itemDataDefinitionField;
+
     void Awake()
     {
         controller = GetComponent<CharacterController>();
@@ -102,6 +139,7 @@ public class PlayerController : MonoBehaviour
 
         if (!flashlight)
             flashlight = GetComponentInChildren<PlayerFlashlight>(true);
+
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
@@ -117,8 +155,13 @@ public class PlayerController : MonoBehaviour
         HandleFlashlightToggle();
         Move();
         UpdateInteractableFocusAndTick();
+
         HandleHotbar();
         HandleActions();
+
+        // Must run every frame to detect G release and decide drop vs throw.
+        HandleItemDropThrowHold();
+
         HandleCarrierDropHold();
         HandleCarrierInspect();
 
@@ -130,12 +173,10 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-
     void HandleFlashlightToggle()
     {
         if (!flashlight) return;
 
-        // If control is locked, force flashlight OFF.
         if (IsControlLocked)
         {
             if (flashlight.IsOn) flashlight.SetOn(false);
@@ -144,7 +185,6 @@ public class PlayerController : MonoBehaviour
 
         if (Input.GetKeyDown(flashlightKey))
         {
-            // Do not allow turning ON when energy is already depleted.
             if (energy != null && energy.IsDepleted) return;
             flashlight.Toggle();
         }
@@ -154,7 +194,6 @@ public class PlayerController : MonoBehaviour
     {
         if (!energy) return;
 
-        // Base drain is always active while energy is above 0.
         int units = Mathf.Max(0, idleDrainUnits);
 
         if (isSprinting) units += Mathf.Max(0, sprintDrainUnits);
@@ -163,13 +202,13 @@ public class PlayerController : MonoBehaviour
         energy.SetDrainUnits(units);
         energy.Tick(Time.deltaTime);
 
-        // If energy depleted this frame, lock controls immediately and turn off flashlight.
         if (energy.IsDepleted && flashlight != null && flashlight.IsOn)
             flashlight.SetOn(false);
 
         if (energy.IsDepleted)
             isSprinting = false;
     }
+
     void Move()
     {
         bool grounded = controller.isGrounded;
@@ -184,9 +223,17 @@ public class PlayerController : MonoBehaviour
         bool wantsSprint = (!blockInput && Input.GetKey(KeyCode.LeftShift));
         isSprinting = wantsSprint && (moveLocal.sqrMagnitude > 0.001f);
         float baseSpeed = isSprinting ? sprintSpeed : walkSpeed;
+
         UpdateEnergyDrainUnitsAndTick();
+
         blockInput = IsControlLocked;
-        if (blockInput) { moveLocal = Vector3.zero; moveWorld = Vector3.zero; isSprinting = false; baseSpeed = 0f; }
+        if (blockInput)
+        {
+            moveLocal = Vector3.zero;
+            moveWorld = Vector3.zero;
+            isSprinting = false;
+            baseSpeed = 0f;
+        }
 
         Vector3 horizontalVel = moveWorld * baseSpeed;
         Vector3 knockHoriz = new Vector3(knockbackVelocity.x, 0f, knockbackVelocity.z);
@@ -202,25 +249,15 @@ public class PlayerController : MonoBehaviour
         controller.Move(Vector3.up * totalY * Time.deltaTime);
 
         if (knockbackVelocity.sqrMagnitude > 0.01f)
-        {
-            knockbackVelocity = Vector3.Lerp(
-                knockbackVelocity,
-                Vector3.zero,
-                knockbackDamping * Time.deltaTime
-            );
-        }
+            knockbackVelocity = Vector3.Lerp(knockbackVelocity, Vector3.zero, knockbackDamping * Time.deltaTime);
         else
-        {
             knockbackVelocity = Vector3.zero;
-        }
 
         if (isKnockedDown)
         {
             knockdownTimer -= Time.deltaTime;
             if (knockdownTimer <= 0f)
-            {
                 isKnockedDown = false;
-            }
         }
     }
 
@@ -228,6 +265,12 @@ public class PlayerController : MonoBehaviour
     {
         if (IsControlLocked) return;
         if (!inventory) return;
+
+        if (IsCarryLockedByDefinition(inventory.ActiveDef()))
+            return;
+
+        if (itemHoldActive)
+            return;
 
         if (Input.GetKeyDown(KeyCode.Alpha1)) inventory.SetActiveIndex(0);
         if (Input.GetKeyDown(KeyCode.Alpha2)) inventory.SetActiveIndex(1);
@@ -239,9 +282,8 @@ public class PlayerController : MonoBehaviour
     void HandleActions()
     {
         if (IsControlLocked) return;
-        // 嚙踝蕭嚙踝蕭 E key: lever first, otherwise pickup item 嚙踝蕭嚙踝蕭
-        
-        // E key: interactable first, otherwise pickup item
+
+        // E: interactable first, otherwise pickup
         if (Input.GetKeyDown(KeyCode.E))
         {
             if (currentInteractable != null)
@@ -251,19 +293,41 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
+                if (IsCarryLockedByDefinition(inventory != null ? inventory.ActiveDef() : null))
+                    return;
+
                 Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
-                if (cam && Physics.Raycast(
-                        cam.transform.position,
-                        cam.transform.forward,
-                        out RaycastHit hit,
-                        interactDistance,
-                        interactMask,
-                        QueryTriggerInteraction.Collide))
+                if (cam && Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit,
+                    interactDistance, interactMask, QueryTriggerInteraction.Collide))
                 {
-                    var worldItem = hit.collider.GetComponentInParent<WorldItem>();
+                    // Primary pickup path
+                    WorldItem worldItem = hit.collider.GetComponentInParent<WorldItem>();
+
+                    // Fallback pickup path: object has ItemData but Player asm cannot reference it directly -> reflection
+                    if (!worldItem)
+                    {
+                        ItemDefinition def = TryGetItemDefinitionFromItemDataReflection(hit.collider);
+                        if (def != null)
+                        {
+                            Transform root = hit.collider.transform;
+
+                            var pi = hit.collider.GetComponentInParent<PickupInteractable>();
+                            if (pi != null) root = pi.transform;
+
+                            worldItem = root.GetComponent<WorldItem>();
+                            if (!worldItem) worldItem = root.gameObject.AddComponent<WorldItem>();
+                            worldItem.definition = def;
+                        }
+                    }
+
                     if (worldItem && inventory != null)
                     {
                         inventory.TryPickupWorldItem(worldItem);
+                    }
+                    else
+                    {
+                        if (debugLever)
+                            Debug.Log($"[PlayerController] Pickup failed: hit={hit.collider.name}, hasWorldItem={(worldItem != null)}, hasInventory={(inventory != null)}");
                     }
                 }
             }
@@ -278,8 +342,7 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-
-        // 嚙踝蕭嚙踝蕭 G key: normal item drop OR carrier drop (hold) 嚙踝蕭嚙踝蕭
+        // G: carrier hold drop OR item tap-drop / hold-throw
         if (Input.GetKeyDown(KeyCode.G))
         {
             if (!inventory) return;
@@ -287,12 +350,14 @@ public class PlayerController : MonoBehaviour
             ItemDefinition activeDef = inventory.ActiveDef();
             bool hasCarrierItem = (activeDef != null && activeDef.isCarrier);
 
+            itemHoldActive = false;
+            itemHoldTimer = 0f;
+
             if (hasCarrierItem)
             {
-                // Carrier item is selected. Start hold-based drop.
                 if (!carrier)
                 {
-                    Debug.LogWarning("[PlayerController] Active item is marked as carrier, but 'carrier' reference is null. Carrier will not be dropped.");
+                    Debug.LogWarning("[PlayerController] Active item is marked as carrier, but 'carrier' reference is null.");
                     return;
                 }
 
@@ -301,27 +366,136 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                // Normal item: tap to drop immediately
-                Vector3 fwd = transform.forward;
-                Transform origin = dropOrigin ? dropOrigin : transform;
-                inventory.DropActiveItem(origin, fwd);
+                carrierDropHolding = false;
+                carrierDropTimer = 0f;
+
+                itemHoldActive = true;
+                itemHoldTimer = 0f;
+                itemHoldIndex = inventory.activeIndex;
             }
         }
 
-        // LMB: use active item (hook placeholder)
+        // LMB: use hook (intentionally empty)
         if (Input.GetMouseButtonDown(0))
         {
-            // active item use hook
+            // Item use system hook
         }
+    }
+
+    // Decide drop vs throw based on hold duration and camera direction.
+    void HandleItemDropThrowHold()
+    {
+        if (!itemHoldActive) return;
+
+        if (IsControlLocked || inventory == null)
+        {
+            itemHoldActive = false;
+            itemHoldTimer = 0f;
+            return;
+        }
+
+        if (Input.GetKey(KeyCode.G))
+        {
+            itemHoldTimer += Time.deltaTime;
+            return;
+        }
+
+        // Released
+        itemHoldActive = false;
+
+        inventory.SetActiveIndex(itemHoldIndex);
+        ItemDefinition def = inventory.ActiveDef();
+        if (def == null)
+        {
+            itemHoldTimer = 0f;
+            return;
+        }
+
+        Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+        Vector3 aimForward = cam ? cam.transform.forward : transform.forward;
+        aimForward.Normalize();
+
+        Transform origin = dropOrigin ? dropOrigin : transform;
+
+        // Must match InventorySystem.DropActiveItem spawn position
+        Vector3 expectedDropPos = origin
+            ? origin.position + aimForward * 0.6f + Vector3.up * 0.5f
+            : transform.position + aimForward * 0.6f + Vector3.up * 0.5f;
+
+        bool wantsThrow = (itemHoldTimer >= throwHoldTime);
+        bool canThrow = !def.isCarrier && IsOneHandByDefinitionOrDefault(def);
+
+        // Always drop (spawns world object + removes from inventory)
+        inventory.DropActiveItem(origin, aimForward);
+
+        if (wantsThrow && canThrow)
+        {
+            float denom = Mathf.Max(0.01f, throwChargeTime);
+            float charge01 = Mathf.Clamp01((itemHoldTimer - throwHoldTime) / denom);
+
+            float force = Mathf.Lerp(throwMinForce, throwMaxForce, charge01);
+
+            // short hold -> higher lob, long hold -> flatter
+            float upBias = Mathf.Lerp(throwMaxUpBias, throwMinUpBias, charge01);
+
+            float spin = Mathf.Lerp(throwMinSpin, throwMaxSpin, charge01);
+
+            Vector3 dir = (aimForward + Vector3.up * upBias).normalized;
+
+            TryApplyThrowToFreshDrop(def, expectedDropPos, dir, force, spin);
+        }
+
+        itemHoldTimer = 0f;
+    }
+
+    private void TryApplyThrowToFreshDrop(ItemDefinition def, Vector3 expectedDropPos, Vector3 dir, float force, float spin)
+    {
+        if (def == null) return;
+
+        WorldItem best = null;
+        float bestDist = float.MaxValue;
+
+        var all = WorldItem.AllWorldItems;
+        int count = all != null ? all.Count : 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            var wi = all[i];
+            if (!wi) continue;
+            if (wi.IsCarrierItem) continue;
+            if (wi.isOnCarrier) continue;
+            if (wi.definition != def) continue;
+
+            float d = Vector3.Distance(wi.transform.position, expectedDropPos);
+            if (d <= throwFindRadius && d < bestDist)
+            {
+                bestDist = d;
+                best = wi;
+            }
+        }
+
+        if (!best) return;
+
+        if (!best.rb) best.rb = best.GetComponent<Rigidbody>();
+        if (!best.rb) best.rb = best.gameObject.AddComponent<Rigidbody>();
+
+        best.rb.isKinematic = false;
+        best.rb.useGravity = true;
+
+        Vector3 playerVel = controller != null ? controller.velocity : Vector3.zero;
+        Vector3 initialVel = dir * Mathf.Max(0f, force) + playerVel * 0.15f;
+        best.ArmIgnoreBreakForThrower(transform.root, 0.25f);
+        best.rb.linearVelocity = initialVel;
+
+        if (spin > 0f)
+            best.rb.angularVelocity = UnityEngine.Random.onUnitSphere * spin;
     }
 
     void HandleCarrierDropHold()
     {
         if (IsControlLocked) return;
-        if (!carrierDropHolding)
-            return;
+        if (!carrierDropHolding) return;
 
-        // If the player releases G while holding, cancel the drop
         if (!Input.GetKey(KeyCode.G))
         {
             carrierDropHolding = false;
@@ -344,7 +518,6 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // Compute required hold duration based on carrier total weight
         float required = carrierDropBaseHold;
         if (carrier.totalWeight > 0f)
         {
@@ -356,7 +529,6 @@ public class PlayerController : MonoBehaviour
 
         if (carrierDropTimer >= required)
         {
-            // Actually drop the carrier as a bundle
             Transform origin = dropOrigin ? dropOrigin : transform;
             Vector3 pos = origin.position + transform.forward * 0.6f + Vector3.up * 0.3f;
             Vector3 fwd = transform.forward;
@@ -365,8 +537,6 @@ public class PlayerController : MonoBehaviour
             if (removed)
             {
                 carrier.DropAsBundle(pos, fwd);
-
-                // Clear references from inventory and player
                 inventory.carrier = null;
                 carrier = null;
             }
@@ -395,7 +565,6 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // If a lever is focused, do not inspect carrier
         if (currentInteractable != null)
         {
             carrierInspectTimer = 0f;
@@ -408,7 +577,6 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // If there is an interactable world item directly in front, prefer pickup
         if (FindInteractCandidate(out var _))
         {
             carrierInspectTimer = 0f;
@@ -435,13 +603,8 @@ public class PlayerController : MonoBehaviour
         }
 
         CarrierController target = null;
-        if (Physics.Raycast(
-                cam.transform.position,
-                cam.transform.forward,
-                out RaycastHit hit,
-                carrierInspectMaxDistance,
-                ~0,
-                QueryTriggerInteraction.Collide))
+        if (Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit,
+            carrierInspectMaxDistance, ~0, QueryTriggerInteraction.Collide))
         {
             target = hit.collider.GetComponentInParent<CarrierController>();
         }
@@ -473,7 +636,6 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    
     void UpdateInteractableFocusAndTick()
     {
         Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
@@ -486,49 +648,29 @@ public class PlayerController : MonoBehaviour
         float dist = leverInteractDistance > 0f ? leverInteractDistance : interactDistance;
 
         LayerMask combinedMask = interactMask;
-        if (leverMask.value != 0)
-        {
-            combinedMask |= leverMask;
-        }
+        if (leverMask.value != 0) combinedMask |= leverMask;
 
         PlayerInteractableBase hitInteractable = null;
 
-        if (Physics.Raycast(
-                cam.transform.position,
-                cam.transform.forward,
-                out RaycastHit hit,
-                dist,
-                combinedMask,
-                QueryTriggerInteraction.Collide))
+        if (Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit,
+            dist, combinedMask, QueryTriggerInteraction.Collide))
         {
             hitInteractable = hit.collider.GetComponentInParent<PlayerInteractableBase>();
-
             if (debugLever)
-            {
                 Debug.Log($"Interact ray hit: {hit.collider.name}, interactable = {(hitInteractable ? hitInteractable.name : "none")}");
-            }
         }
         else
         {
-            if (debugLever)
-            {
-                Debug.Log("Interact ray hit nothing");
-            }
+            if (debugLever) Debug.Log("Interact ray hit nothing");
         }
 
         if (hitInteractable != currentInteractable)
         {
-            if (currentInteractable != null)
-            {
-                currentInteractable.OnFocusExit(this);
-            }
+            if (currentInteractable != null) currentInteractable.OnFocusExit(this);
 
             currentInteractable = hitInteractable;
 
-            if (currentInteractable != null)
-            {
-                currentInteractable.OnFocusEnter(this);
-            }
+            if (currentInteractable != null) currentInteractable.OnFocusEnter(this);
         }
 
         if (currentInteractable != null && interactUseHeld && currentInteractable.IsHoldInteraction)
@@ -546,9 +688,6 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Teleport the player safely (disables CharacterController briefly).
-    /// </summary>
     public void TeleportTo(Vector3 worldPosition, Quaternion worldRotation, bool resetKnockback = true)
     {
         if (resetKnockback)
@@ -573,16 +712,15 @@ public class PlayerController : MonoBehaviour
         verticalVel = 0f;
     }
 
-public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoSpill)
+    public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoSpill)
     {
         if (!canBeKnockedBack || controller == null) return;
 
         Vector3 dir = transform.position - sourcePosition;
         dir.y = 0f;
         if (dir.sqrMagnitude < 0.0001f)
-        {
             dir = -transform.forward;
-        }
+
         dir.Normalize();
 
         Vector3 horizontal = dir * force;
@@ -594,9 +732,7 @@ public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoS
         knockdownTimer = knockdownDuration;
 
         if (carrier != null && causeCargoSpill && carrier.HasAnyMounted())
-        {
             carrier.SpillAllOnCarrierDrop(transform.position, dir);
-        }
     }
 
     public bool FindInteractCandidate(out WorldItem world)
@@ -606,18 +742,106 @@ public void ApplyKnockback(Vector3 sourcePosition, float force, bool causeCargoS
         Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
         if (!cam) return false;
 
-        if (Physics.Raycast(
-            cam.transform.position,
-            cam.transform.forward,
-            out RaycastHit hit,
-            interactDistance,
-            interactMask,
-            QueryTriggerInteraction.Collide))
+        if (Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit,
+            interactDistance, interactMask, QueryTriggerInteraction.Collide))
         {
             world = hit.collider.GetComponentInParent<WorldItem>();
             return world != null;
         }
 
         return false;
+    }
+
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // ItemData reflection pickup fallback (no compile-time dependency)
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    private static ItemDefinition TryGetItemDefinitionFromItemDataReflection(Collider col)
+    {
+        EnsureItemDataReflection();
+
+        if (s_itemDataType == null || s_itemDataDefinitionField == null)
+            return null;
+
+        // Search upward manually
+        Transform t = col.transform;
+        while (t != null)
+        {
+            Component comp = t.GetComponent(s_itemDataType);
+            if (comp != null)
+            {
+                object v = s_itemDataDefinitionField.GetValue(comp);
+                return v as ItemDefinition;
+            }
+            t = t.parent;
+        }
+
+        return null;
+    }
+
+    private static void EnsureItemDataReflection()
+    {
+        if (s_itemDataChecked) return;
+        s_itemDataChecked = true;
+
+        // Find ItemData type by name from loaded assemblies
+        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                var type = asm.GetType("ItemData", false);
+                if (type != null)
+                {
+                    s_itemDataType = type;
+                    break;
+                }
+            }
+            catch { /* ignore */ }
+        }
+
+        if (s_itemDataType == null)
+            return;
+
+        // ItemData has public ItemDefinition definition;
+        s_itemDataDefinitionField = s_itemDataType.GetField("definition", BindingFlags.Public | BindingFlags.Instance);
+    }
+
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // carryKind reflection helpers (optional)
+    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    private static bool IsCarryLockedByDefinition(ItemDefinition def)
+    {
+        if (def == null) return false;
+        if (def.isCarrier) return false;
+
+        EnsureCarryKindField();
+
+        if (s_carryKindField == null) return false;
+
+        object v = s_carryKindField.GetValue(def);
+        if (v == null) return false;
+
+        string name = v.ToString();
+        return name == "TwoHand" || name == "TwoPersonCargo";
+    }
+
+    private static bool IsOneHandByDefinitionOrDefault(ItemDefinition def)
+    {
+        if (def == null) return true;
+
+        EnsureCarryKindField();
+        if (s_carryKindField == null) return true;
+
+        object v = s_carryKindField.GetValue(def);
+        if (v == null) return true;
+
+        return v.ToString() == "OneHand";
+    }
+
+    private static void EnsureCarryKindField()
+    {
+        if (s_carryKindChecked) return;
+        s_carryKindChecked = true;
+
+        s_carryKindField = typeof(ItemDefinition).GetField("carryKind", BindingFlags.Public | BindingFlags.Instance);
     }
 }

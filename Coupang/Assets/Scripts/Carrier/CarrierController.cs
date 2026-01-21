@@ -263,8 +263,8 @@ public class CarrierController : MonoBehaviour
         slotPivot.localRotation = Quaternion.identity;
         slotPivot.localScale = Vector3.one;
 
-        // Mount world item to carrier slot
-        world.EnterCarrierMountMode(this, slotIndex, slotPivot);
+        
+        //world.EnterCarrierMountMode(this, slotIndex, slotPivot);////////////////////////////////////////////////////////
 
         mounted.Add(world);
         _lastChildCount = -1; // rebuild bend chain
