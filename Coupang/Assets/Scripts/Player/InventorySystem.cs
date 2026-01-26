@@ -537,4 +537,87 @@ public class InventorySystem : MonoBehaviour
         root.SetPositionAndRotation(pos, rot);
         root.SetParent(socket, true);
     }
+
+    // ─────────────────────────────────────────────
+    // Knockdown Spill
+    // ─────────────────────────────────────────────
+    /// <summary>
+    /// Spills (drops) all inventory items to the world and clears the inventory.
+    /// Used by PlayerController knockdown rule.
+    /// </summary>
+    public void SpillAllInventory(Transform dropOrigin, Vector3 forward)
+    {
+        EnsureSlots();
+
+        Vector3 f = forward;
+        f.y = 0f;
+        if (f.sqrMagnitude < 0.0001f)
+        {
+            f = dropOrigin ? dropOrigin.forward : transform.forward;
+            f.y = 0f;
+        }
+        if (f.sqrMagnitude > 0.0001f) f.Normalize();
+        else f = Vector3.forward;
+
+        // Collect unique stacks (because multi-slot items share the same ItemStackData reference)
+        var unique = new System.Collections.Generic.HashSet<ItemStackData>();
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var st = slots[i].stack;
+            if (st != null) unique.Add(st);
+        }
+
+        Vector3 basePos = ComputeDropPos(dropOrigin, f);
+
+        foreach (var head in unique)
+        {
+            if (head == null || head.def == null) continue;
+            var def = head.def;
+
+            // Carrier item: drop the carrier bundle if possible (kept for compatibility)
+            if (def.isCarrier)
+            {
+                if (carrier != null)
+                {
+                    Vector3 p = basePos + UnityEngine.Random.insideUnitSphere * 0.15f + Vector3.up * 0.25f;
+                    carrier.DropAsBundle(p, f);
+                    carrier = null;
+
+                    var pc = GetComponentInParent<PlayerController>();
+                    if (pc != null) pc.carrier = null;
+                }
+                continue;
+            }
+
+            if (!def.worldPrefab) continue;
+
+            Vector3 offset = UnityEngine.Random.insideUnitSphere * 0.25f;
+            offset.y = Mathf.Abs(offset.y) * 0.15f;
+            Vector3 pos = basePos + offset + Vector3.up * 0.15f;
+
+            var go = UnityEngine.Object.Instantiate(def.worldPrefab, pos, Quaternion.identity);
+            go.name = def.worldPrefab.name;
+
+            var wi = go.GetComponent<WorldItem>() ?? go.AddComponent<WorldItem>();
+            wi.definition = def;
+
+            if (head.durCurrent >= 0 || head.durMax > 0)
+                wi.ApplyDurability(head.durCurrent, head.durMax, true);
+
+            Vector3 initVel =
+                f * UnityEngine.Random.Range(0.8f, 1.6f) +
+                Vector3.up * UnityEngine.Random.Range(0.5f, 1.2f) +
+                UnityEngine.Random.insideUnitSphere * 0.3f;
+
+            wi.OnDropped(pos, initVel);
+        }
+
+        // Clear slots
+        for (int i = 0; i < slots.Count; i++)
+            slots[i].stack = null;
+
+        activeIndex = 0;
+        NotifyChanged();
+    }
+
 }

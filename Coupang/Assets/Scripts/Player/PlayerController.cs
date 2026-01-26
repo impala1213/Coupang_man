@@ -6,6 +6,48 @@ using UnityEngine;
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
+    [Header("Animation")]
+    [Tooltip("Optional. If null, will be resolved from children.")]
+    public Animator animator;
+
+    [Tooltip("If true, PlayerController drives Animator parameters (locomotion + hold pose).")]
+    public bool driveAnimatorParams = true;
+
+    [Tooltip("Primary locomotion float param (commonly 'Speed').")]
+    public string speedParam = "Speed";
+
+    [Tooltip("Optional secondary float param for input magnitude 0..1 (commonly 'movement'). Leave empty to disable.")]
+    public string movementParam = "movement";
+
+    [Tooltip("Smoothing for animator float parameters (higher = snappier).")]
+    public float animSmoothing = 12f;
+
+    [Tooltip("Animator int param for upper-body hold pose: 0=None, 1=OneHand, 2=TwoHand. Leave empty to disable.")]
+    public string holdPoseParam = "HoldPose";
+
+    [Tooltip("Animator trigger param for knockdown (AnyState -> PlayerFallDown). Leave empty to disable.")]
+    public string fallDownTriggerParam = "FallDown";
+
+    [Tooltip("If >= 0, sets this layer's weight to 0 when HoldPose=0, else 1. Use for UpperBody layer.")]
+    public int upperBodyLayerIndex = 1;
+
+    private string _lastSpeedParam;
+    private string _lastMovementParam;
+    private string _lastHoldPoseParam;
+    private string _lastFallDownTriggerParam;
+    private int _speedHash;
+    private int _movementHash;
+    private int _holdPoseHash;
+    private int _fallDownTriggerHash;
+    private bool _animHasSpeed;
+    private bool _animHasMovement;
+    private bool _animHasHoldPose;
+    private bool _animHasFallDownTrigger;
+    private int _paramCacheKey;
+
+    private float _animSpeed;
+    private float _animMovement;
+
     [Header("Movement")]
     public float walkSpeed = 4f;
     public float sprintSpeed = 7f;
@@ -134,6 +176,9 @@ public class PlayerController : MonoBehaviour
     {
         controller = GetComponent<CharacterController>();
 
+        if (!animator)
+            animator = GetComponentInChildren<Animator>(true);
+
         if (!energy)
             energy = GetComponent<Energy>();
 
@@ -148,6 +193,8 @@ public class PlayerController : MonoBehaviour
 
         if (!carrierSlotUI)
             carrierSlotUI = FindFirstObjectByType<CarrierSlotUI>();
+
+        RefreshAnimatorParamCache(force: true);
     }
 
     void Update()
@@ -258,6 +305,23 @@ public class PlayerController : MonoBehaviour
             knockdownTimer -= Time.deltaTime;
             if (knockdownTimer <= 0f)
                 isKnockedDown = false;
+        }
+
+        // Drive animator locomotion params from the same input/speed values used for movement.
+        if (driveAnimatorParams)
+        {
+            // moveLocal is normalized, so magnitude is 0 or 1 in this controller.
+            float move01 = moveLocal.magnitude;
+            float desiredSpeed = move01 * baseSpeed;
+
+            // During knockdown/control lock, force in-place idle and clear hold pose.
+            if (IsControlLocked)
+            {
+                move01 = 0f;
+                desiredSpeed = 0f;
+            }
+
+            UpdateAnimatorParams(desiredSpeed, move01);
         }
     }
 
@@ -752,9 +816,127 @@ public class PlayerController : MonoBehaviour
         return false;
     }
 
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // ------------------------------------------------------------
+    // Animator driving (optional)
+    // ------------------------------------------------------------
+    private void RefreshAnimatorParamCache(bool force = false)
+    {
+        if (!driveAnimatorParams) return;
+
+        if (!animator)
+        {
+            _animHasSpeed = false;
+            _animHasMovement = false;
+            _animHasHoldPose = false;
+            _animHasFallDownTrigger = false;
+            _paramCacheKey = 0;
+            return;
+        }
+
+        string sp = speedParam ?? string.Empty;
+        string mp = movementParam ?? string.Empty;
+        string hp = holdPoseParam ?? string.Empty;
+        string fp = fallDownTriggerParam ?? string.Empty;
+
+        int key = animator.GetInstanceID();
+        unchecked
+        {
+            key = (key * 397) ^ sp.GetHashCode();
+            key = (key * 397) ^ mp.GetHashCode();
+            key = (key * 397) ^ hp.GetHashCode();
+            key = (key * 397) ^ fp.GetHashCode();
+        }
+
+        if (!force && key == _paramCacheKey) return;
+        _paramCacheKey = key;
+
+        _lastSpeedParam = sp;
+        _lastMovementParam = mp;
+        _lastHoldPoseParam = hp;
+        _lastFallDownTriggerParam = fp;
+
+        _speedHash = !string.IsNullOrEmpty(sp) ? Animator.StringToHash(sp) : 0;
+        _movementHash = !string.IsNullOrEmpty(mp) ? Animator.StringToHash(mp) : 0;
+        _holdPoseHash = !string.IsNullOrEmpty(hp) ? Animator.StringToHash(hp) : 0;
+        _fallDownTriggerHash = !string.IsNullOrEmpty(fp) ? Animator.StringToHash(fp) : 0;
+
+        _animHasSpeed = HasParamOfType(animator, sp, AnimatorControllerParameterType.Float);
+        _animHasMovement = HasParamOfType(animator, mp, AnimatorControllerParameterType.Float);
+        _animHasHoldPose = HasParamOfType(animator, hp, AnimatorControllerParameterType.Int);
+        _animHasFallDownTrigger = HasParamOfType(animator, fp, AnimatorControllerParameterType.Trigger);
+    }
+
+    private static bool HasParamOfType(Animator a, string name, AnimatorControllerParameterType type)
+    {
+        if (!a || string.IsNullOrEmpty(name)) return false;
+        var ps = a.parameters;
+        for (int i = 0; i < ps.Length; i++)
+        {
+            if (ps[i].type == type && ps[i].name == name)
+                return true;
+        }
+        return false;
+    }
+
+    private void UpdateAnimatorParams(float desiredSpeed, float desiredMove01)
+    {
+        if (!driveAnimatorParams || !animator) return;
+        RefreshAnimatorParamCache();
+
+        float t = Mathf.Clamp01(Time.deltaTime * Mathf.Max(0.01f, animSmoothing));
+
+        if (_animHasSpeed)
+        {
+            _animSpeed = Mathf.Lerp(_animSpeed, desiredSpeed, t);
+            animator.SetFloat(_speedHash, _animSpeed);
+        }
+
+        if (_animHasMovement)
+        {
+            _animMovement = Mathf.Lerp(_animMovement, desiredMove01, t);
+            animator.SetFloat(_movementHash, _animMovement);
+        }
+
+        // Optional: upper-body pose overlay (0=None, 1=OneHand, 2=TwoHand)
+        int holdPose = ComputeHoldPose();
+
+        if (IsControlLocked)
+            holdPose = 0;
+
+        if (_animHasHoldPose)
+            animator.SetInteger(_holdPoseHash, holdPose);
+
+        if (upperBodyLayerIndex >= 0 && upperBodyLayerIndex < animator.layerCount)
+        {
+            float w = (holdPose == 0) ? 0f : 1f;
+            animator.SetLayerWeight(upperBodyLayerIndex, w);
+        }
+    }
+
+    private int ComputeHoldPose()
+    {
+        if (!inventory) return 0;
+        ItemDefinition def = inventory.ActiveDef();
+        if (def == null) return 0;
+
+        // Carriers are handled by carrier system; don't force arm pose here.
+        if (def.isCarrier) return 0;
+
+        // If carryKind doesn't exist, default is OneHand (safe fallback).
+        return IsOneHandByDefinitionOrDefault(def) ? 1 : 2;
+    }
+
+    // Optional: animation event hook for stand-end unlock
+    public void AnimEvent_StandFinished()
+    {
+        // Intentionally left for integration with knockdown lock logic
+        isKnockedDown = false;
+        knockdownTimer = 0f;
+    }
+
+    // ------------------------------------------------------------
     // ItemData reflection pickup fallback (no compile-time dependency)
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // ------------------------------------------------------------
     private static ItemDefinition TryGetItemDefinitionFromItemDataReflection(Collider col)
     {
         EnsureItemDataReflection();
@@ -805,9 +987,9 @@ public class PlayerController : MonoBehaviour
         s_itemDataDefinitionField = s_itemDataType.GetField("definition", BindingFlags.Public | BindingFlags.Instance);
     }
 
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // ------------------------------------------------------------
     // carryKind reflection helpers (optional)
-    // 式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式式
+    // ------------------------------------------------------------
     private static bool IsCarryLockedByDefinition(ItemDefinition def)
     {
         if (def == null) return false;
