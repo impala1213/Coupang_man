@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 [DisallowMultipleComponent]
 public class InventorySystem : MonoBehaviour
@@ -23,13 +24,15 @@ public class InventorySystem : MonoBehaviour
     [Tooltip("Socket name under Player hierarchy for one-hand items.")]
     public string rightHandSocketName = "RightHandSocket";
 
-    [Tooltip("Socket name under Player hierarchy for two-hand carry items.")]
-    public string carrySocketName = "CarrySocket";
+    [Tooltip("Socket name under Player hierarchy for two-hand items.")]
+    [FormerlySerializedAs("twoHandSocketName")]
+    public string twoHandSocketName = "TwoHandSocket";
 
-    [Tooltip("Grip transform name inside item prefab for one-hand attach.")]
-    public string oneHandGripName = "Grip_R";
+    [Tooltip("Grip transform name inside item prefab for in-hand attach (used for both one-hand and two-hand).")]
+    [FormerlySerializedAs("gripName")]
+    public string gripName = "Grip_R";
 
-    [Tooltip("Grip transform name inside item prefab for two-hand/carry attach.")]
+    [Tooltip("LEGACY (no longer used for socket selection): kept for backward compatibility with older prefabs.")]
     public string carryGripName = "CarryGrip";
 
     [Tooltip("Disable all colliders on held visual instance.")]
@@ -70,7 +73,7 @@ public class InventorySystem : MonoBehaviour
 
     // Held visual runtime
     private Transform _rightHandSocket;
-    private Transform _carrySocket;
+    private Transform _twoHandSocket;
     private GameObject _heldInstance;
 
     private void Awake()
@@ -399,10 +402,11 @@ public class InventorySystem : MonoBehaviour
             : transform;
 
         _rightHandSocket = FindDeepChildBFS(playerRoot, rightHandSocketName);
-        _carrySocket = FindDeepChildBFS(playerRoot, carrySocketName);
+        _twoHandSocket = FindDeepChildBFS(playerRoot, twoHandSocketName);
+        if (!_twoHandSocket) _twoHandSocket = FindDeepChildBFS(playerRoot, "CarrySocket"); // legacy fallback
 
         if (!_rightHandSocket) _rightHandSocket = playerRoot;
-        if (!_carrySocket) _carrySocket = playerRoot;
+        if (!_twoHandSocket) _twoHandSocket = playerRoot;
     }
 
     private void RefreshHeldVisual()
@@ -413,7 +417,7 @@ public class InventorySystem : MonoBehaviour
             return;
         }
 
-        if (!_rightHandSocket || !_carrySocket)
+        if (!_rightHandSocket || !_twoHandSocket)
             ResolveSockets();
 
         DestroyHeldVisual();
@@ -462,13 +466,16 @@ public class InventorySystem : MonoBehaviour
             if (pi) pi.enabled = false;
         }
 
-        // Decide socket by grip availability:
-        // CarryGrip -> CarrySocket, else Grip_R -> RightHandSocket
-        Transform carryGrip = FindDeepChildBFS(_heldInstance.transform, carryGripName);
-        Transform oneHandGrip = FindDeepChildBFS(_heldInstance.transform, oneHandGripName);
+        // Decide socket by ItemDefinition.carryKind (single source of truth).
+        // Grip is shared; you only need ONE grip transform in the item prefab.
+        Transform grip = FindDeepChildBFS(_heldInstance.transform, gripName);
 
-        Transform grip = carryGrip ? carryGrip : oneHandGrip;
-        Transform socket = carryGrip ? _carrySocket : _rightHandSocket;
+        // Legacy fallbacks (older prefabs may still use these names)
+        if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "Grip_R");
+        if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, carryGripName);
+
+        bool useTwoHandSocket = def.carryKind != CarryKind.OneHand;
+        Transform socket = useTwoHandSocket ? _twoHandSocket : _rightHandSocket;
 
         SnapRootToSocket(_heldInstance.transform, grip, socket);
     }
@@ -537,87 +544,4 @@ public class InventorySystem : MonoBehaviour
         root.SetPositionAndRotation(pos, rot);
         root.SetParent(socket, true);
     }
-
-    // ─────────────────────────────────────────────
-    // Knockdown Spill
-    // ─────────────────────────────────────────────
-    /// <summary>
-    /// Spills (drops) all inventory items to the world and clears the inventory.
-    /// Used by PlayerController knockdown rule.
-    /// </summary>
-    public void SpillAllInventory(Transform dropOrigin, Vector3 forward)
-    {
-        EnsureSlots();
-
-        Vector3 f = forward;
-        f.y = 0f;
-        if (f.sqrMagnitude < 0.0001f)
-        {
-            f = dropOrigin ? dropOrigin.forward : transform.forward;
-            f.y = 0f;
-        }
-        if (f.sqrMagnitude > 0.0001f) f.Normalize();
-        else f = Vector3.forward;
-
-        // Collect unique stacks (because multi-slot items share the same ItemStackData reference)
-        var unique = new System.Collections.Generic.HashSet<ItemStackData>();
-        for (int i = 0; i < slots.Count; i++)
-        {
-            var st = slots[i].stack;
-            if (st != null) unique.Add(st);
-        }
-
-        Vector3 basePos = ComputeDropPos(dropOrigin, f);
-
-        foreach (var head in unique)
-        {
-            if (head == null || head.def == null) continue;
-            var def = head.def;
-
-            // Carrier item: drop the carrier bundle if possible (kept for compatibility)
-            if (def.isCarrier)
-            {
-                if (carrier != null)
-                {
-                    Vector3 p = basePos + UnityEngine.Random.insideUnitSphere * 0.15f + Vector3.up * 0.25f;
-                    carrier.DropAsBundle(p, f);
-                    carrier = null;
-
-                    var pc = GetComponentInParent<PlayerController>();
-                    if (pc != null) pc.carrier = null;
-                }
-                continue;
-            }
-
-            if (!def.worldPrefab) continue;
-
-            Vector3 offset = UnityEngine.Random.insideUnitSphere * 0.25f;
-            offset.y = Mathf.Abs(offset.y) * 0.15f;
-            Vector3 pos = basePos + offset + Vector3.up * 0.15f;
-
-            var go = UnityEngine.Object.Instantiate(def.worldPrefab, pos, Quaternion.identity);
-            go.name = def.worldPrefab.name;
-
-            var wi = go.GetComponent<WorldItem>() ?? go.AddComponent<WorldItem>();
-            wi.definition = def;
-
-            if (head.durCurrent >= 0 || head.durMax > 0)
-                wi.ApplyDurability(head.durCurrent, head.durMax, true);
-
-            Vector3 initVel =
-                f * UnityEngine.Random.Range(0.8f, 1.6f) +
-                Vector3.up * UnityEngine.Random.Range(0.5f, 1.2f) +
-                UnityEngine.Random.insideUnitSphere * 0.3f;
-
-            wi.OnDropped(pos, initVel);
-        }
-
-        // Clear slots
-        for (int i = 0; i < slots.Count; i++)
-            slots[i].stack = null;
-
-        activeIndex = 0;
-        NotifyChanged();
-    }
-
 }

@@ -172,7 +172,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 60be83410e9621b4c9a2e519fd7432b5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  definition: {fileID: 11400000, guid: 1995a7efd85113243b9761ee1cb486ad, type: 2}
+  definition: {fileID: 11400000, guid: e68dbbcd4381a8a469ecbe87c322c626, type: 2}
   instanceId: 1
   stackCount: 1
   useDurability: 1

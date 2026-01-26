@@ -581,7 +581,7 @@ GameObject:
   - component: {fileID: 7271118276966186562}
   - component: {fileID: 6726186429805365574}
   m_Layer: 0
-  m_Name: Meshy_Mesh_0.002
+  m_Name: PlayerModel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -893,8 +893,8 @@ MonoBehaviour:
   carrierMountPivot: {fileID: 8682159903423935610}
   spawnHeldVisual: 1
   rightHandSocketName: RightHandSocket
-  carrySocketName: CarrySocket
-  oneHandGripName: Grip_R
+  twoHandSocketName: TwoHandSocket
+  gripName: Grip_R
   carryGripName: CarryGrip
   disableCollidersOnHeld: 1
   disableRigidbodiesOnHeld: 1
@@ -995,7 +995,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   rightHandSocket: {fileID: 1159027915248505083}
-  carrySocket: {fileID: 3790820507228692109}
+  twoHandSocket: {fileID: 1883753614209438980}
   dropOrigin: {fileID: 3790820507228692109}
 --- !u!1 &4667856158711566469
 GameObject:
@@ -1143,8 +1143,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6331054733526873318}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0.019, y: 0.018, z: -0.05}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.123, y: 0.176, z: -0.085}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

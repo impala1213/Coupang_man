@@ -1,11 +1,15 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 [DisallowMultipleComponent]
 public class PlayerItemSockets : MonoBehaviour
 {
     [Header("Sockets")]
     public Transform rightHandSocket;   // One-hand items
-    public Transform carrySocket;       // Two-hand cargo
+
+    [FormerlySerializedAs("carrySocket")]
+    public Transform twoHandSocket;     // Two-hand items (legacy name: CarrySocket)
+
     public Transform dropOrigin;        // Drop/throw origin
 
     private void Reset()
@@ -21,11 +25,16 @@ public class PlayerItemSockets : MonoBehaviour
     public void TryAutoResolve()
     {
         if (!rightHandSocket) rightHandSocket = FindDeepChild(transform, "RightHandSocket");
-        if (!carrySocket) carrySocket = FindDeepChild(transform, "CarrySocket");
+
+        if (!twoHandSocket)
+            twoHandSocket = FindDeepChild(transform, "TwoHandSocket");
+        if (!twoHandSocket)
+            twoHandSocket = FindDeepChild(transform, "CarrySocket"); // legacy fallback
+
         if (!dropOrigin) dropOrigin = FindDeepChild(transform, "DropOrigin");
 
         if (!rightHandSocket) rightHandSocket = transform;
-        if (!carrySocket) carrySocket = transform;
+        if (!twoHandSocket) twoHandSocket = transform;
         if (!dropOrigin) dropOrigin = transform;
     }
 
@@ -33,8 +42,9 @@ public class PlayerItemSockets : MonoBehaviour
     {
         if (def == null) return rightHandSocket;
 
-        bool isTwoHandCargo = (def.itemType == ItemType.Cargo) || (def.slotSize >= 2);
-        return isTwoHandCargo ? carrySocket : rightHandSocket;
+        // Socket selection is based ONLY on ItemDefinition.carryKind (not slotSize, not itemType).
+        bool isOneHand = def.carryKind == CarryKind.OneHand;
+        return isOneHand ? rightHandSocket : twoHandSocket;
     }
 
     private static Transform FindDeepChild(Transform root, string name)

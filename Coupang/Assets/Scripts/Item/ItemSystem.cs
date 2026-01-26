@@ -78,7 +78,11 @@ namespace DeliveryBot.ItemSystem
 
         public Transform GetGrip(GripSlot slot)
         {
-            return slot == GripSlot.CarryGrip ? (carryGrip != null ? carryGrip : gripR) : gripR;
+            // We no longer distinguish grip slots for one-hand vs two-hand.
+            // Use gripR as the single source of truth (carryGrip is legacy fallback).
+            if (gripR != null) return gripR;
+            if (carryGrip != null) return carryGrip;
+            return transform;
         }
 
         public CarryType ResolveCarryType(WorldItem wi)
@@ -87,12 +91,18 @@ namespace DeliveryBot.ItemSystem
             if (modeOverride == CarryModeOverride.TwoHand) return CarryType.TwoHandCargo;
             if (modeOverride == CarryModeOverride.TwoPerson) return CarryType.TwoPersonCargo;
 
-            if (wi != null && wi.GetComponent<ItemSystemTwoPersonCargo>() != null) return CarryType.TwoPersonCargo;
+            if (wi != null && wi.GetComponent<ItemSystemTwoPersonCargo>() != null)
+                return CarryType.TwoPersonCargo;
 
             if (wi != null && wi.definition != null)
             {
-                if (wi.definition.itemType == ItemType.Cargo) return CarryType.TwoHandCargo;
-                if (wi.definition.slotSize >= 2) return CarryType.TwoHandCargo;
+                switch (wi.definition.carryKind)
+                {
+                    case CarryKind.OneHand: return CarryType.OneHand;
+                    case CarryKind.TwoHand: return CarryType.TwoHandCargo;
+                    case CarryKind.TwoPersonCargo: return CarryType.TwoPersonCargo;
+                    default: return CarryType.OneHand;
+                }
             }
 
             return CarryType.OneHand;
@@ -490,9 +500,13 @@ namespace DeliveryBot.ItemSystem
         private CarryType InferCarryTypeFromDefinition(WorldItem wi)
         {
             if (wi == null || wi.definition == null) return CarryType.OneHand;
-            if (wi.definition.itemType == ItemType.Cargo) return CarryType.TwoHandCargo;
-            if (wi.definition.slotSize >= 2) return CarryType.TwoHandCargo;
-            return CarryType.OneHand;
+            switch (wi.definition.carryKind)
+            {
+                case CarryKind.OneHand: return CarryType.OneHand;
+                case CarryKind.TwoHand: return CarryType.TwoHandCargo;
+                case CarryKind.TwoPersonCargo: return CarryType.TwoPersonCargo;
+                default: return CarryType.OneHand;
+            }
         }
 
         private bool PickupOneHand(WorldItem wi)
