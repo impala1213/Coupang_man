@@ -15,7 +15,7 @@ MonoBehaviour:
   entries:
   - planetId: 1
     displayName: WinterLand
-    planetType: 
+    planetType: Danger
     gameplaySceneName: WinterLands
     contractDirectory: {fileID: 11400000, guid: 53f0dd423c313d549bbf7765e327f987, type: 2}
     riskLevel: 45

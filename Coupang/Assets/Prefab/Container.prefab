@@ -4749,7 +4749,7 @@ GameObject:
   - component: {fileID: 1834035444749444308}
   - component: {fileID: 5413461976128844448}
   - component: {fileID: 6318136410005783488}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Quad
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9067,7 +9067,7 @@ GameObject:
   - component: {fileID: 3208501133306914401}
   - component: {fileID: 820241729723732651}
   - component: {fileID: 6521045135223800274}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Panel_Code_Enter_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14640,7 +14640,7 @@ GameObject:
   - component: {fileID: 997339643179513732}
   - component: {fileID: 6988302116815398375}
   - component: {fileID: 2224758129975985724}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -23322,7 +23322,7 @@ GameObject:
   - component: {fileID: 4370818377767477624}
   - component: {fileID: 784017975164195291}
   - component: {fileID: 6820399357736912614}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_7
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24370,7 +24370,7 @@ GameObject:
   - component: {fileID: 449931534055830754}
   - component: {fileID: 5193918436467871097}
   - component: {fileID: 4168544226188631261}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -25252,7 +25252,7 @@ GameObject:
   - component: {fileID: 5708111242943847034}
   - component: {fileID: 150188853241138382}
   - component: {fileID: 655933380188050412}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -26445,7 +26445,7 @@ GameObject:
   - component: {fileID: 3389644660581522427}
   - component: {fileID: 550904440477483169}
   - component: {fileID: 7932007775520529739}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_Enter
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -27696,7 +27696,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2754590435443454832}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Technic_Console_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -28438,7 +28438,7 @@ GameObject:
   - component: {fileID: 5248719520974399051}
   - component: {fileID: 3859228166819890906}
   - component: {fileID: 6868451952432008450}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_0
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -30292,7 +30292,7 @@ GameObject:
   - component: {fileID: 3601701891033011052}
   - component: {fileID: 5624303025867426745}
   - component: {fileID: 2933953840704454977}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Technic_Console_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -35423,7 +35423,7 @@ GameObject:
   - component: {fileID: 1110552506048250622}
   - component: {fileID: 8847150479323430125}
   - component: {fileID: 8474565340962702431}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Text_Dyn_Title_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -38057,7 +38057,7 @@ GameObject:
   - component: {fileID: 6084288147902952809}
   - component: {fileID: 1823219854625367005}
   - component: {fileID: 1315795271630011647}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -38157,7 +38157,7 @@ GameObject:
   - component: {fileID: 6084288148846668040}
   - component: {fileID: 1823219854512127932}
   - component: {fileID: 1315795273655853214}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -38547,7 +38547,7 @@ GameObject:
   - component: {fileID: 317329776369892331}
   - component: {fileID: 4657935557131659549}
   - component: {fileID: 4173733353351116198}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Screen_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -39131,7 +39131,7 @@ GameObject:
   - component: {fileID: 2262545822803113214}
   - component: {fileID: 843625967919582846}
   - component: {fileID: 7009132565549413485}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -40577,7 +40577,7 @@ GameObject:
   - component: {fileID: 9057919434993024426}
   - component: {fileID: 8492747703088074866}
   - component: {fileID: 5425441664818026764}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Decal_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -40665,7 +40665,7 @@ GameObject:
   - component: {fileID: 6283205988479324261}
   - component: {fileID: 1878200706391295697}
   - component: {fileID: 1233829682547268083}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -41877,7 +41877,7 @@ GameObject:
   - component: {fileID: 437793832803994236}
   - component: {fileID: 8339899917018428527}
   - component: {fileID: 8998639497388608733}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Text_Dyn_04
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -42877,7 +42877,7 @@ GameObject:
   - component: {fileID: 5383181694496924459}
   - component: {fileID: 1120313581852126518}
   - component: {fileID: 1792945713181739005}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_5
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -43105,7 +43105,7 @@ GameObject:
   - component: {fileID: 8904625295367941208}
   - component: {fileID: 5632235248411313191}
   - component: {fileID: 440329045549587002}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Code_Enter_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -43493,7 +43493,7 @@ GameObject:
   - component: {fileID: 8909936848063892961}
   - component: {fileID: 1011174359920931826}
   - component: {fileID: 95905462469610304}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Text_Dyn_09
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -43567,7 +43567,7 @@ GameObject:
   - component: {fileID: 8909936847959036288}
   - component: {fileID: 1011174361393131411}
   - component: {fileID: 95905464227026721}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Text_Dyn_04
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -45434,7 +45434,7 @@ GameObject:
   - component: {fileID: 8717738525597250700}
   - component: {fileID: 960881775702493855}
   - component: {fileID: 146768145626985005}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Text_Dyn_04
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -46350,7 +46350,7 @@ GameObject:
   - component: {fileID: 3015886338986569365}
   - component: {fileID: 7275652869548865569}
   - component: {fileID: 8068070797610428163}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -48148,7 +48148,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5265055936564835439}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Circle_02
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -49142,7 +49142,7 @@ GameObject:
   - component: {fileID: 2351079186739881495}
   - component: {fileID: 7890989385561960611}
   - component: {fileID: 7389748458091655041}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -53094,7 +53094,7 @@ GameObject:
   - component: {fileID: 4824997449770439180}
   - component: {fileID: 2292515485360374150}
   - component: {fileID: 7432748973883873442}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_Clear
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -53710,6 +53710,115 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &6379355987183180681
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1813920160432314558}
+  - component: {fileID: 7304744793345648990}
+  - component: {fileID: 946190463285795588}
+  - component: {fileID: 1013821985713443772}
+  m_Layer: 14
+  m_Name: MonitorScreen
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1813920160432314558
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6379355987183180681}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.49526918, y: -0.5046853, z: 0.49582368, w: 0.504143}
+  m_LocalPosition: {x: -0.018775122, y: 0.29840642, z: -0.0021152627}
+  m_LocalScale: {x: 1.8585904, y: 1.4843377, z: 1.2740004}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 5091187848442560490}
+  m_LocalEulerAnglesHint: {x: 91.01599, y: 90.008, z: 180.071}
+--- !u!33 &7304744793345648990
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6379355987183180681}
+  m_Mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &946190463285795588
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6379355987183180681}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: ad8a737112cba3942a38b292a32a77eb, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!64 &1013821985713443772
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6379355987183180681}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 0
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!1 &6386546097364613051
 GameObject:
   m_ObjectHideFlags: 0
@@ -54781,7 +54890,7 @@ GameObject:
   - component: {fileID: 6989172518666387091}
   - component: {fileID: 1535897357950566528}
   - component: {fileID: 1876957307155150898}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Text_Dyn_Title_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -56424,7 +56533,7 @@ GameObject:
   - component: {fileID: 6210218651294841116}
   - component: {fileID: 1281743139532467263}
   - component: {fileID: 5208943795257094812}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_6
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -63430,7 +63539,7 @@ GameObject:
   - component: {fileID: 6207164270036390696}
   - component: {fileID: 6706961888960778687}
   - component: {fileID: 279240045931731077}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -63679,7 +63788,7 @@ GameObject:
   - component: {fileID: 8064973523533088936}
   - component: {fileID: 8064973523533088937}
   - component: {fileID: 8064973523533088939}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Quad
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -63782,7 +63891,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8064973523837402301}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Circle_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -63814,7 +63923,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8064973524789347409}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Circle_Anim_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -63992,7 +64101,7 @@ GameObject:
   - component: {fileID: 7298445958779368004}
   - component: {fileID: 8866636908605517180}
   - component: {fileID: 3229404084564222240}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Point Light_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -66366,7 +66475,7 @@ GameObject:
   - component: {fileID: 2084612036283747444}
   - component: {fileID: 6828171630717119884}
   - component: {fileID: 2660676406397876799}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_8
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -67475,7 +67584,7 @@ GameObject:
   - component: {fileID: 6130123490369434006}
   - component: {fileID: 8833280470044800771}
   - component: {fileID: 8916665224450294420}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Button_9
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -67582,7 +67691,9 @@ GameObject:
   - component: {fileID: 5091187848442560490}
   - component: {fileID: 3938085490701622363}
   - component: {fileID: 7673108438177673906}
-  m_Layer: 0
+  - component: {fileID: 3706034958051842417}
+  - component: {fileID: 8763703162419775860}
+  m_Layer: 14
   m_Name: Monitor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -67598,10 +67709,11 @@ Transform:
   m_GameObject: {fileID: 8565540511634881190}
   serializedVersion: 2
   m_LocalRotation: {x: 0.000000014766592, y: -0.000000016112702, z: -0.73723155, w: 0.67564017}
-  m_LocalPosition: {x: -0.42116868, y: 2.327, z: 8.5}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: -0.44931, y: 2.561, z: 8.5}
+  m_LocalScale: {x: 1.2475, y: 1.2475, z: 1.2475}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 1813920160432314558}
   m_Father: {fileID: 3940802817060143268}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: -94.992}
 --- !u!33 &3938085490701622363
@@ -67659,6 +67771,42 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &3706034958051842417
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8565540511634881190}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.610804, y: 0.3647225, z: 2.0030394}
+  m_Center: {x: -0.00000017881393, y: 0.10286367, z: -0.000016748905}
+--- !u!114 &8763703162419775860
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8565540511634881190}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c23a992ed5d8165439d53f5571506219, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  prompt: Interact
+  uiController: {fileID: 0}
+  debugLog: 0
 --- !u!1 &8573550688169276340
 GameObject:
   m_ObjectHideFlags: 0
@@ -68003,7 +68151,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8700187283629353550}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: P_Panel_Circle_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -68038,7 +68186,7 @@ GameObject:
   - component: {fileID: 8700187283934273115}
   - component: {fileID: 8700187283934273114}
   - component: {fileID: 8700187283934273112}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Quad
   m_TagString: Untagged
   m_Icon: {fileID: 0}
