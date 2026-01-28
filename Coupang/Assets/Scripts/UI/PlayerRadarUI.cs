@@ -74,6 +74,22 @@ public class PlayerRadarUI : MonoBehaviour
     public Color blipColor = Color.cyan;
     public Color goalColor = Color.yellow;
 
+[Header("Icon Size")]
+[Tooltip("Scale multiplier for the goal icon. 1 = prefab's default size.")]
+[Min(0.1f)] public float goalIconScale = 1.6f;
+
+[Tooltip("Scale multiplier for blip icons. 1 = prefab's default size.")]
+[Min(0.1f)] public float blipIconScale = 1.0f;
+
+[Tooltip("If true, icon scales are additionally multiplied by (radar diameter / referenceRadarDiameter).")]
+public bool autoScaleIconsWithRadar = true;
+
+[Tooltip("Radar diameter (in UI pixels) that corresponds to auto scale factor = 1.")]
+[Min(1f)] public float referenceRadarDiameter = 220f;
+
+[Tooltip("Clamp range for auto scale factor.")]
+public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
+
     [Header("Performance")]
     [Min(0.02f)]
     public float scanInterval = 0.2f;
@@ -98,6 +114,7 @@ public class PlayerRadarUI : MonoBehaviour
 
     private readonly HashSet<int> uniqueIds = new HashSet<int>();
     private float nextScanTime;
+    private float lastAutoScaleFactor = -1f;
 
     void Awake()
     {
@@ -119,6 +136,8 @@ public class PlayerRadarUI : MonoBehaviour
         if (!player || !radarRect || !rotateContainer || !iconsRoot || !dotPrefab)
             return;
 
+        UpdateIconScalesIfNeeded();
+
         RotateRadarContent();
 
         if (Time.unscaledTime >= nextScanTime)
@@ -138,6 +157,7 @@ public class PlayerRadarUI : MonoBehaviour
     public void ForceRefresh()
     {
         nextScanTime = 0f;
+        UpdateIconScalesIfNeeded();
         RotateRadarContent();
         ScanTargets();
         UpdateGoalDot();
@@ -281,6 +301,7 @@ public class PlayerRadarUI : MonoBehaviour
 
         SetupDotRect(goalDotRt);
         ApplyDotVisual(goalDot, DotKind.Goal);
+        ApplyDotScale(goalDotRt, DotKind.Goal);
         go.SetActive(true);
     }
 
@@ -388,6 +409,52 @@ public class PlayerRadarUI : MonoBehaviour
         return Mathf.Max(0f, radius - edgePadding);
     }
 
+private float GetAutoScaleFactor()
+{
+    if (!autoScaleIconsWithRadar || !radarRect) return 1f;
+
+    float d = Mathf.Min(radarRect.rect.width, radarRect.rect.height);
+    if (d <= 0.01f) return 1f;
+
+    float f = d / Mathf.Max(1f, referenceRadarDiameter);
+
+    float min = autoScaleClamp.x;
+    float max = autoScaleClamp.y;
+    if (max < min) { float t = min; min = max; max = t; }
+
+    return Mathf.Clamp(f, min, max);
+}
+
+private void ApplyDotScale(RectTransform rt, DotKind kind)
+{
+    if (!rt) return;
+
+    float f = GetAutoScaleFactor();
+    float baseScale = (kind == DotKind.Goal) ? goalIconScale : blipIconScale;
+    float s = Mathf.Max(0.001f, baseScale * f);
+
+    rt.localScale = new Vector3(s, s, 1f);
+}
+
+private void UpdateIconScalesIfNeeded()
+{
+    float f = GetAutoScaleFactor();
+    if (Mathf.Abs(f - lastAutoScaleFactor) < 0.001f)
+        return;
+
+    lastAutoScaleFactor = f;
+
+    if (goalDotRt)
+        ApplyDotScale(goalDotRt, DotKind.Goal);
+
+    for (int i = 0; i < blipDots.Count; i++)
+    {
+        var img = blipDots[i];
+        if (!img) continue;
+        ApplyDotScale(img.rectTransform, DotKind.Blip);
+    }
+}
+
     // ---------------- Pooling ----------------
 
     private void EnsureDotPool(List<Image> pool, int needed, DotKind kind)
@@ -407,6 +474,7 @@ public class PlayerRadarUI : MonoBehaviour
 
             SetupDotRect(rt);
             ApplyDotVisual(img, kind);
+            ApplyDotScale(rt, kind);
 
             go.SetActive(false);
             pool.Add(img);

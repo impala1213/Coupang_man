@@ -142,6 +142,7 @@ public class PlayerController : MonoBehaviour
         {
             if (isKnockedDown) return true;
             if (energy != null && energy.IsDepleted) return true;
+            if (InteractionLock.ModalUIOpen) return true;
             return false;
         }
     }
@@ -704,6 +705,12 @@ public class PlayerController : MonoBehaviour
     {
         Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
         if (!cam)
+        {
+            ClearInteractableFocus();
+            return;
+        }
+
+        if (InteractionLock.ModalUIOpen)
         {
             ClearInteractableFocus();
             return;

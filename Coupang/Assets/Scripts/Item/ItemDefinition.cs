@@ -1,26 +1,18 @@
 // Assets/Scripts/Item/ItemDefinition.cs
 using UnityEngine;
 
-public enum ItemType
-{
-    Tool,
-    Consumable,
-    Cargo,
-    Special
-}
-
+/// <summary>
+/// Item category used by missions and UI.
+/// (Requested categories)
+/// </summary>
 public enum ItemCategory
 {
     None = 0,
-    Food,
-    Weapon,
-    Electronics,
-    Luxury,
-    Energy,
-    Medicine,
-    Antique,
-    Ore,
-    Carrier
+    General = 1,
+    Explosive = 2,
+    Bio = 3,
+    Toxic = 4,
+    Fragile = 5
 }
 
 /// <summary>
@@ -43,8 +35,8 @@ public class ItemDefinition : ScriptableObject
     public Sprite icon;
 
     [Header("Classification")]
-    public ItemType itemType = ItemType.Tool;
     public ItemCategory category = ItemCategory.None;
+
 
     [Tooltip("True if this item IS the carrier itself (backpack).")]
     public bool isCarrier = false;

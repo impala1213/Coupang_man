@@ -544,4 +544,43 @@ public class InventorySystem : MonoBehaviour
         root.SetPositionAndRotation(pos, rot);
         root.SetParent(socket, true);
     }
+
+// ─────────────────────────────────────────────
+// Mission helpers
+// ─────────────────────────────────────────────
+/// <summary>
+/// Removes any inventory slot whose definition matches one of the given defs.
+/// Used to purge mission cargo on return.
+/// </summary>
+public int RemoveAllMatchingDefinitions(ICollection<ItemDefinition> defs)
+{
+    if (defs == null || defs.Count == 0)
+        return 0;
+
+    int removedSlots = 0;
+
+    for (int i = 0; i < slots.Count; i++)
+    {
+        var st = slots[i].stack;
+        if (st == null || st.def == null)
+            continue;
+
+        if (!defs.Contains(st.def))
+            continue;
+
+        slots[i].stack = null;
+        removedSlots++;
+    }
+
+    activeIndex = Mathf.Clamp(activeIndex, 0, slotCount - 1);
+
+    // Refresh held visuals & UI
+    DestroyHeldVisual();
+    RefreshHeldVisual();
+    OnInventoryChanged?.Invoke();
+
+    return removedSlots;
+}
+
+
 }

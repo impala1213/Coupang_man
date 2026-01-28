@@ -6,8 +6,8 @@ using UnityEngine;
 /// This feature is planned like any other feature (footprint/flatten), but its content is generated
 /// as a separate interior dungeon and accessed via an interactable teleport entrance.
 /// </summary>
-[CreateAssetMenu(menuName = "Map/Features/Cave Feature Definition")]
-public class CaveFeatureDefinition : FeatureDefinition
+[CreateAssetMenu(menuName = "Map/Caves/Cave Definition", fileName = "CaveDefinition")]
+public class CaveFeatureDefinition : ScriptableObject
 {
     [System.Serializable]
     public struct WeightedPrefab

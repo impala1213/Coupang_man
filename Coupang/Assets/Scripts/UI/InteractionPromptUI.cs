@@ -58,8 +58,8 @@ public class InteractionPromptUI : MonoBehaviour
             return;
         }
 
-        // When a lever has focus, do not show item info.
-        if (InteractionLock.LeverHasFocus)
+        // When a modal UI (lever/terminal) has focus, do not show item info.
+        if (InteractionLock.LeverHasFocus || InteractionLock.TerminalHasFocus || InteractionLock.ModalUIOpen)
         {
             Hide();
             return;

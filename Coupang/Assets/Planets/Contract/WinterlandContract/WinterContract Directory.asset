@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 48e83940e0cf1d74197ed5ee54293d07, type: 3}
+  m_Name: WinterContract Directory
+  m_EditorClassIdentifier: 
+  entries:
+  - contract: {fileID: 11400000, guid: 99ede1891e5aab446b5a0b4cda219e75, type: 2}
+    weight: 1
+  - contract: {fileID: 11400000, guid: fd44e0cca4c7db04a92b981b96691723, type: 2}
+    weight: 1

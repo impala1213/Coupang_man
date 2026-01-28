@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3d9d2c59f11eeba42975be3d159c592e, type: 3}
+  m_Name: PlanetCatalog
+  m_EditorClassIdentifier: 
+  entries:
+  - planetId: 1
+    displayName: WinterLand
+    planetType: 
+    gameplaySceneName: WinterLands
+    contractDirectory: {fileID: 11400000, guid: 53f0dd423c313d549bbf7765e327f987, type: 2}
+    riskLevel: 45
+    weight: 1
+  - planetId: 2
+    displayName: WinterLand
+    planetType: Beast Around here
+    gameplaySceneName: WinterLands
+    contractDirectory: {fileID: 11400000, guid: 53f0dd423c313d549bbf7765e327f987, type: 2}
+    riskLevel: 22
+    weight: 1

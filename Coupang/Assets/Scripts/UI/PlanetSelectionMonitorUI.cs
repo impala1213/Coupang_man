@@ -1,0 +1,660 @@
+using System.Collections.Generic;
+using System.Text;
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+/// <summary>
+/// Ship monitor UI for choosing the next planet before launching.
+/// - Draws 2 random planet candidates from PlanetCatalog.
+/// - For each planet, draws a random DeliveryContract and shows required cargo by category (icons + counts).
+/// - Player clicks Option A/B to immediately LOCK the destination (no changes allowed after).
+/// - GameSession consumes PlanetSelectionState at launch and loads the chosen planet.
+/// </summary>
+public class PlanetSelectionMonitorUI : MonoBehaviour
+{
+    [Header("Data")]
+    public PlanetCatalog planetCatalog;
+
+    [Tooltip("Fallback contract directory if the planet entry has none.")]
+    public DeliveryContractDirectory fallbackContractDirectory;
+
+    [Header("Option A UI")]
+    public TMP_Text optionATitle;
+    [Tooltip("Option A primary detail line. In the current UI this is used for Reward.")]
+    public TMP_Text optionADetails;
+
+    [Tooltip("Option A secondary detail text shown under Reward (optional).")]
+    public TMP_Text optionADetails2;
+    public Button optionAButton;
+
+    [Header("Option B UI")]
+    public TMP_Text optionBTitle;
+    [Tooltip("Option B primary detail line. In the current UI this is used for Reward.")]
+    public TMP_Text optionBDetails;
+
+    [Tooltip("Option B secondary detail text shown under Reward (optional).")]
+    public TMP_Text optionBDetails2;
+    public Button optionBButton;
+
+    [Header("Contract Cargo Icons (Optional)")]
+    [Tooltip("Icon library for each ItemCategory. If null, cargo icons will not render.")]
+    public ItemCategoryIconLibrary cargoIconLibrary;
+
+    [Tooltip("Prefab that has CategoryIconCountWidget (Image + TMP count).")]
+    public GameObject cargoCategoryIconPrefab;
+
+    [Tooltip("Root transforms where cargo category icons will be placed.")]
+    public Transform optionACargoIconsRoot;
+    public Transform optionBCargoIconsRoot;
+
+    [Header("Cargo Icon Layout")]
+    [Tooltip("If the cargo icons root has no LayoutGroup, icons will be positioned manually so they line up inside the bar.")]
+    public bool autoLayoutCargoIcons = true;
+
+    [Min(0f)] public float cargoIconSpacing = 34f;
+    public Vector2 cargoIconStartOffset = Vector2.zero;
+
+    [Tooltip("Force each cargo icon widget to a fixed size. Useful when using a plain Image prefab.")]
+    public bool forceCargoIconSize = true;
+    public Vector2 cargoIconSize = new Vector2(32f, 32f);
+
+    [Header("Option Visuals (Bright/Dark)")]
+    [Tooltip("Optional. If assigned, alpha will be adjusted to brighten/dim the selected/unselected option.")]
+    public CanvasGroup optionAGroup;
+
+    [Tooltip("Optional. If assigned, alpha will be adjusted to brighten/dim the selected/unselected option.")]
+    public CanvasGroup optionBGroup;
+
+    [Range(0f, 1f)] public float selectedAlpha = 1f;
+    [Range(0f, 1f)] public float unselectedAlpha = 0.35f;
+
+    [Header("Danger Icons (Optional)")]
+    [Tooltip("Prefab for a single warning icon (red). Icon count is derived from planet riskLevel.")]
+    public GameObject dangerIconPrefab;
+
+    [Tooltip("Parent transforms that will contain the duplicated warning icons.")]
+    public Transform optionADangerIconsRoot;
+    public Transform optionBDangerIconsRoot;
+
+    [Tooltip("Max warning icons. With the default 0-100 risk and 20 risk per icon, this should be 5.")]
+    [Min(0)] public int maxDangerIcons = 5;
+
+    [Header("Danger Icon Layout")]
+    [Tooltip("If the danger icons root has no LayoutGroup, icons will be positioned manually so they line up inside the bar.")]
+    public bool autoLayoutDangerIcons = true;
+
+    [Min(0f)] public float dangerIconSpacing = 26f;
+    public Vector2 dangerIconStartOffset = Vector2.zero;
+
+    [Tooltip("Force each danger icon to a fixed size. Useful when using a plain Image prefab.")]
+    public bool forceDangerIconSize = true;
+    public Vector2 dangerIconSize = new Vector2(32f, 32f);
+
+    [Header("Danger Rules")]
+    [Tooltip("Max risk value. 0-100 by default.")]
+    public int maxRisk = 100;
+
+    [Tooltip("Each N risk adds one warning icon (ceil). 20 means: 1-20=1, 21-40=2, etc.")]
+    public int riskPerIcon = 20;
+
+    [Header("Controls")]
+    public Button backButton; // same role as ESC (close)
+    public TMP_Text statusText;
+
+    [Header("Terminal")]
+    [Tooltip("Optional. If assigned, closing this UI will go through the terminal controller so it can release ModalUIOpen.")]
+    public MonitorTerminalUIController terminalController;
+
+    [Header("Behavior")]
+    [Tooltip("If true, candidates are generated when the panel is enabled (if none exist yet).")]
+    public bool generateOnEnable = true;
+
+    [Tooltip("If true, pressing ESC will close this panel.")]
+    public bool closeOnEscape = true;
+
+    private PlanetSelectionState.Offer _a;
+    private PlanetSelectionState.Offer _b;
+
+    private readonly List<GameObject> _dangerIconsA = new List<GameObject>();
+    private readonly List<GameObject> _dangerIconsB = new List<GameObject>();
+
+    private readonly List<CategoryIconCountWidget> _cargoIconsA = new List<CategoryIconCountWidget>();
+    private readonly List<CategoryIconCountWidget> _cargoIconsB = new List<CategoryIconCountWidget>();
+
+    private readonly Dictionary<ItemCategory, int> _tmpCounts = new Dictionary<ItemCategory, int>();
+
+    private void OnEnable()
+    {
+        // Auto-wire terminal controller so ESC/back properly unlocks player controls.
+        if (!terminalController)
+            terminalController = GetComponentInParent<MonitorTerminalUIController>(true);
+        if (!terminalController)
+            terminalController = FindObjectOfType<MonitorTerminalUIController>(true);
+
+        WireButtons();
+
+        PlanetSelectionState.Changed -= OnStateChanged;
+        PlanetSelectionState.Changed += OnStateChanged;
+
+        if (generateOnEnable)
+        {
+            if (!PlanetSelectionState.HasCandidates)
+                GenerateCandidates();
+        }
+
+        LoadFromState();
+        RefreshUI();
+    }
+
+    private void OnDisable()
+    {
+        PlanetSelectionState.Changed -= OnStateChanged;
+    }
+
+    private void Update()
+    {
+        if (!closeOnEscape) return;
+
+        // Close only when this panel is active.
+        if (Input.GetKeyDown(KeyCode.Escape))
+            Close();
+    }
+
+    private void OnStateChanged()
+    {
+        LoadFromState();
+        RefreshUI();
+    }
+
+    private void WireButtons()
+    {
+        if (optionAButton != null)
+        {
+            optionAButton.onClick.RemoveListener(OnPickA);
+            optionAButton.onClick.AddListener(OnPickA);
+        }
+
+        if (optionBButton != null)
+        {
+            optionBButton.onClick.RemoveListener(OnPickB);
+            optionBButton.onClick.AddListener(OnPickB);
+        }
+
+        if (backButton != null)
+        {
+            backButton.onClick.RemoveListener(Close);
+            backButton.onClick.AddListener(Close);
+        }
+    }
+
+    public void Close()
+    {
+        // Do NOT clear state; just close the UI.
+        // IMPORTANT: close through the terminal controller so InteractionLock.ModalUIOpen is released.
+        if (terminalController != null)
+            terminalController.Close();
+        else
+            gameObject.SetActive(false);
+    }
+
+    public void GenerateCandidates()
+    {
+        if (planetCatalog == null)
+        {
+            SetStatus("PlanetCatalog missing.");
+            return;
+        }
+
+        var p1 = planetCatalog.GetRandomPlanet();
+        var p2 = GetRandomPlanetDifferentFrom(p1);
+
+        _a = BuildOffer(p1);
+        _b = BuildOffer(p2);
+
+        PlanetSelectionState.SetCandidates(_a, _b, clearSelection: true);
+        SetStatus("Pick one destination to lock in.");
+    }
+
+    private PlanetCatalog.PlanetEntry GetRandomPlanetDifferentFrom(PlanetCatalog.PlanetEntry other)
+    {
+        if (planetCatalog == null)
+            return null;
+
+        PlanetCatalog.PlanetEntry p = planetCatalog.GetRandomPlanet();
+        if (other == null)
+            return p;
+
+        for (int i = 0; i < 8; i++)
+        {
+            if (p != null && p != other)
+                return p;
+
+            p = planetCatalog.GetRandomPlanet();
+        }
+
+        // If the catalog has only one planet, this may return the same planet.
+        return p;
+    }
+
+    private PlanetSelectionState.Offer BuildOffer(PlanetCatalog.PlanetEntry planet)
+    {
+        PlanetSelectionState.Offer offer = new PlanetSelectionState.Offer();
+        offer.planet = planet;
+        offer.contract = null;
+
+        if (planet != null)
+        {
+            DeliveryContractDirectory dir = (planet.contractDirectory != null) ? planet.contractDirectory : fallbackContractDirectory;
+            if (dir != null)
+                offer.contract = dir.GetRandomContract();
+        }
+
+        return offer;
+    }
+
+    private void LoadFromState()
+    {
+        if (!PlanetSelectionState.HasCandidates)
+            return;
+
+        _a = PlanetSelectionState.GetCandidate(0);
+        _b = PlanetSelectionState.GetCandidate(1);
+    }
+
+    private void RefreshUI()
+    {
+        bool hasCandidates = PlanetSelectionState.HasCandidates;
+        bool hasSelection = PlanetSelectionState.HasSelection;
+        bool locked = PlanetSelectionState.HasConfirmed;
+        int sel = PlanetSelectionState.GetSelectedIndex();
+
+        // Titles
+        if (optionATitle != null) optionATitle.text = BuildTitle(_a, index: 0, sel, locked);
+        if (optionBTitle != null) optionBTitle.text = BuildTitle(_b, index: 1, sel, locked);
+
+        // Details are now split like:
+        // - Primary line: Reward
+        // - Secondary line: planet type + danger (optional separate TMP)
+        ApplyOfferText(optionADetails, optionADetails2, _a);
+        ApplyOfferText(optionBDetails, optionBDetails2, _b);
+
+        // Buttons (lock after first pick)
+        if (optionAButton != null) optionAButton.interactable = hasCandidates && !locked;
+        if (optionBButton != null) optionBButton.interactable = hasCandidates && !locked;
+
+        // Bright / dark
+        ApplyOptionVisuals(hasSelection, sel);
+
+        // Contract cargo icons
+        EnsureCargoIcons(optionACargoIconsRoot, _cargoIconsA, _a.contract);
+        EnsureCargoIcons(optionBCargoIconsRoot, _cargoIconsB, _b.contract);
+
+        // Danger icons
+        EnsureDangerIcons(optionADangerIconsRoot, _dangerIconsA, GetWarningIconCount(_a));
+        EnsureDangerIcons(optionBDangerIconsRoot, _dangerIconsB, GetWarningIconCount(_b));
+
+        // Status
+        if (statusText != null)
+        {
+            if (!hasCandidates)
+                statusText.text = "No candidates.";
+            else if (!hasSelection)
+                statusText.text = "Pick A or B (locks immediately).";
+            else if (locked)
+                statusText.text = "Destination locked. Pull the lever to launch.";
+            else
+                statusText.text = "Pick A or B (locks immediately).";
+        }
+    }
+
+    private void ApplyOptionVisuals(bool hasSelection, int sel)
+    {
+        if (optionAGroup == null && optionBGroup == null)
+            return;
+
+        if (!hasSelection)
+        {
+            if (optionAGroup != null) optionAGroup.alpha = selectedAlpha;
+            if (optionBGroup != null) optionBGroup.alpha = selectedAlpha;
+            return;
+        }
+
+        if (optionAGroup != null) optionAGroup.alpha = (sel == 0) ? selectedAlpha : unselectedAlpha;
+        if (optionBGroup != null) optionBGroup.alpha = (sel == 1) ? selectedAlpha : unselectedAlpha;
+    }
+
+    private string BuildTitle(PlanetSelectionState.Offer offer, int index, int sel, bool locked)
+    {
+        string planetName = (offer.planet != null) ? offer.planet.GetDisplayLabel() : "(None)";
+        bool isSelected = (sel == index);
+
+        if (locked && isSelected)
+            return $"{planetName}";
+
+        return planetName;
+    }
+
+    private void ApplyOfferText(TMP_Text primary, TMP_Text secondary, PlanetSelectionState.Offer offer)
+    {
+        if (primary == null && secondary == null)
+            return;
+
+        string reward = BuildOfferReward(offer);
+        string extra = BuildOfferExtraDetails(offer);
+
+        // If the scene hasn't wired a secondary TMP, fall back to a 2-line block in the primary.
+        if (primary != null)
+        {
+            if (secondary == null || secondary == primary)
+            {
+                if (string.IsNullOrEmpty(extra))
+                    primary.text = reward;
+                else
+                    primary.text = reward + "\n" + extra;
+            }
+            else
+            {
+                primary.text = reward;
+            }
+        }
+
+        if (secondary != null && secondary != primary)
+            secondary.text = extra;
+    }
+
+    private string BuildOfferDetails(PlanetSelectionState.Offer offer)
+    {
+        if (offer.planet == null)
+            return string.Empty;
+
+        StringBuilder sb = new StringBuilder();
+
+        // Planet type label (authored in PlanetCatalog)
+        if (!string.IsNullOrWhiteSpace(offer.planet.planetType))
+            sb.AppendLine(offer.planet.planetType);
+
+        // Keep it short: contract UI is icons now.
+        int risk = Mathf.Clamp(offer.planet.riskLevel, 0, maxRisk);
+        sb.AppendLine($"Danger: {risk}/{maxRisk}");
+
+        int maxReward = (offer.contract != null) ? offer.contract.ComputeMaxReward() : 0;
+        sb.AppendLine($"Payout: {maxReward}");
+
+        return sb.ToString();
+    }
+
+    private string BuildOfferReward(PlanetSelectionState.Offer offer)
+    {
+        int maxReward = (offer.contract != null) ? offer.contract.ComputeMaxReward() : 0;
+        return $"{maxReward}$";
+    }
+
+    private string BuildOfferExtraDetails(PlanetSelectionState.Offer offer)
+    {
+        if (offer.planet == null)
+            return string.Empty;
+
+        StringBuilder sb = new StringBuilder();
+
+        // Planet type label (authored in PlanetCatalog)
+        if (!string.IsNullOrWhiteSpace(offer.planet.planetType))
+            sb.AppendLine(offer.planet.planetType);
+        return sb.ToString();
+    }
+
+    private void EnsureCargoIcons(Transform root, List<CategoryIconCountWidget> pool, DeliveryContractDefinition contract)
+    {
+        if (root == null || cargoIconLibrary == null || cargoCategoryIconPrefab == null)
+        {
+            // If wiring isn't done, at least hide existing ones.
+            for (int i = 0; i < pool.Count; i++)
+                if (pool[i] != null) pool[i].gameObject.SetActive(false);
+            return;
+        }
+
+        ContractCargoCategoryUtil.BuildCategoryCounts(contract, _tmpCounts);
+
+        // Build a compact ordered list to show
+        List<ItemCategory> showCats = new List<ItemCategory>(8);
+        for (int i = 0; i < ContractCargoCategoryUtil.DisplayOrder.Length; i++)
+        {
+            ItemCategory cat = ContractCargoCategoryUtil.DisplayOrder[i];
+            if (!_tmpCounts.TryGetValue(cat, out int count) || count <= 0)
+                continue;
+
+            // Usually we don't show None category in UI.
+            if (cat == ItemCategory.None)
+                continue;
+
+            Sprite icon = cargoIconLibrary.GetIcon(cat);
+            if (icon == null)
+                continue;
+
+            showCats.Add(cat);
+        }
+
+        // Grow pool
+        while (pool.Count < showCats.Count)
+        {
+            GameObject go = Instantiate(cargoCategoryIconPrefab);
+            go.transform.SetParent(root, false);
+
+            var widget = go.GetComponent<CategoryIconCountWidget>();
+            if (!widget)
+                widget = go.AddComponent<CategoryIconCountWidget>();
+
+            go.SetActive(false);
+
+            RectTransform rtNew = go.GetComponent<RectTransform>();
+            if (rtNew != null)
+                rtNew.localScale = Vector3.one;
+
+            pool.Add(widget);
+        }
+
+        // Apply content
+        for (int i = 0; i < pool.Count; i++)
+        {
+            var widget = pool[i];
+            if (!widget) continue;
+
+            bool active = i < showCats.Count;
+            widget.gameObject.SetActive(active);
+
+            if (!active)
+                continue;
+
+            ItemCategory cat = showCats[i];
+            int count = _tmpCounts.TryGetValue(cat, out int c) ? c : 0;
+            Sprite icon = cargoIconLibrary.GetIcon(cat);
+            widget.Set(icon, count);
+
+            // Normalize / size
+            var rt = widget.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                rt.localScale = Vector3.one;
+                if (forceCargoIconSize)
+                    rt.sizeDelta = cargoIconSize;
+            }
+
+            // LayoutElement for LayoutGroups
+            var le = widget.GetComponent<LayoutElement>();
+            if (!le) le = widget.gameObject.AddComponent<LayoutElement>();
+            if (forceCargoIconSize)
+            {
+                le.preferredWidth = cargoIconSize.x;
+                le.preferredHeight = cargoIconSize.y;
+                le.minWidth = cargoIconSize.x;
+                le.minHeight = cargoIconSize.y;
+            }
+        }
+
+        if (!autoLayoutCargoIcons)
+            return;
+
+        RectTransform rootRt = root as RectTransform;
+        if (rootRt == null)
+            rootRt = root.GetComponent<RectTransform>();
+
+        if (rootRt == null)
+            return;
+
+        // If a LayoutGroup exists, let it handle positions.
+        if (rootRt.GetComponent<LayoutGroup>() != null)
+            return;
+
+        // Manual layout (like PlayerEnergyUI bolts)
+        int visibleIndex = 0;
+        for (int i = 0; i < pool.Count; i++)
+        {
+            var widget = pool[i];
+            if (!widget || !widget.gameObject.activeSelf) continue;
+
+            var rt = widget.GetComponent<RectTransform>();
+            if (!rt) continue;
+
+            // Left-middle anchor so we can lay them out in a bar.
+            rt.anchorMin = new Vector2(0f, 0.5f);
+            rt.anchorMax = new Vector2(0f, 0.5f);
+            rt.pivot = new Vector2(0f, 0.5f);
+            rt.localScale = Vector3.one;
+
+            if (forceCargoIconSize)
+                rt.sizeDelta = cargoIconSize;
+
+            rt.anchoredPosition = cargoIconStartOffset + new Vector2(visibleIndex * cargoIconSpacing, 0f);
+            visibleIndex++;
+        }
+    }
+
+    private int GetWarningIconCount(PlanetSelectionState.Offer offer)
+    {
+        if (offer.planet == null) return 0;
+        int risk = Mathf.Clamp(offer.planet.riskLevel, 0, maxRisk);
+        return RiskToWarningIconCount(risk);
+    }
+
+    private int RiskToWarningIconCount(int risk)
+    {
+        if (riskPerIcon <= 0) return 0;
+        if (risk <= 0) return 0;
+
+        int icons = Mathf.CeilToInt(risk / (float)riskPerIcon);
+        return Mathf.Clamp(icons, 0, maxDangerIcons);
+    }
+
+    private void EnsureDangerIcons(Transform root, List<GameObject> pool, int desiredCount)
+    {
+        if (root == null || dangerIconPrefab == null)
+            return;
+
+        desiredCount = Mathf.Clamp(desiredCount, 0, maxDangerIcons);
+
+        // Grow pool
+        while (pool.Count < desiredCount)
+        {
+            GameObject go = Instantiate(dangerIconPrefab);
+            go.transform.SetParent(root, false);
+            go.SetActive(false);
+
+            // Normalize UI scale
+            var rtNew = go.GetComponent<RectTransform>();
+            if (rtNew != null)
+                rtNew.localScale = Vector3.one;
+
+            pool.Add(go);
+        }
+
+        // Ensure parent + active state
+        for (int i = 0; i < pool.Count; i++)
+        {
+            var go = pool[i];
+            if (go == null) continue;
+
+            if (go.transform.parent != root)
+                go.transform.SetParent(root, worldPositionStays: false);
+
+            go.SetActive(i < desiredCount);
+        }
+
+        if (!autoLayoutDangerIcons)
+            return;
+
+        RectTransform rootRt = root as RectTransform;
+        if (rootRt == null)
+            rootRt = root.GetComponent<RectTransform>();
+
+        if (rootRt == null)
+            return;
+
+        var layoutGroup = rootRt.GetComponent<LayoutGroup>();
+        if (layoutGroup != null)
+        {
+            // If using a LayoutGroup, make sure icon sizes are fixed so spacing is predictable.
+            if (forceDangerIconSize)
+            {
+                for (int i = 0; i < pool.Count; i++)
+                {
+                    var go = pool[i];
+                    if (!go) continue;
+
+                    var rt = go.GetComponent<RectTransform>();
+                    if (rt != null)
+                    {
+                        rt.localScale = Vector3.one;
+                        rt.sizeDelta = dangerIconSize;
+                    }
+
+                    var le = go.GetComponent<LayoutElement>();
+                    if (!le) le = go.AddComponent<LayoutElement>();
+                    le.preferredWidth = dangerIconSize.x;
+                    le.preferredHeight = dangerIconSize.y;
+                    le.minWidth = dangerIconSize.x;
+                    le.minHeight = dangerIconSize.y;
+                }
+            }
+            return;
+        }
+
+        // Manual layout (like PlayerEnergyUI bolts)
+        int visibleIndex = 0;
+        for (int i = 0; i < pool.Count; i++)
+        {
+            var go = pool[i];
+            if (!go || !go.activeSelf) continue;
+
+            var rt = go.GetComponent<RectTransform>();
+            if (!rt) continue;
+
+            // Left-middle anchor so we can lay them out in a bar.
+            rt.anchorMin = new Vector2(0f, 0.5f);
+            rt.anchorMax = new Vector2(0f, 0.5f);
+            rt.pivot = new Vector2(0f, 0.5f);
+            rt.localScale = Vector3.one;
+
+            if (forceDangerIconSize)
+                rt.sizeDelta = dangerIconSize;
+
+            rt.anchoredPosition = dangerIconStartOffset + new Vector2(visibleIndex * dangerIconSpacing, 0f);
+            visibleIndex++;
+        }
+    }
+
+    private void OnPickA()
+    {
+        PlanetSelectionState.TryLockSelection(0);
+    }
+
+    private void OnPickB()
+    {
+        PlanetSelectionState.TryLockSelection(1);
+    }
+
+    private void SetStatus(string msg)
+    {
+        if (statusText != null)
+            statusText.text = msg;
+    }
+}
