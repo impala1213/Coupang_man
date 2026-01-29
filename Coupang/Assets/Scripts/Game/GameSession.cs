@@ -431,12 +431,12 @@ public class GameSession : MonoBehaviour
         if (cargoItems != null && fromContainer.cargoRoot != null)
         {
             var added = new HashSet<Transform>();
-            var cargoItems = GatherCargoWorldItems(fromContainer, fromScene);
-            if (cargoItems != null && cargoItems.Count > 0)
+            var worldItemsInCargo = GatherCargoWorldItems(fromContainer, fromScene);
+            if (worldItemsInCargo != null && worldItemsInCargo.Count > 0)
             {
-                for (int i = 0; i < cargoItems.Count; i++)
+                for (int i = 0; i < worldItemsInCargo.Count; i++)
                 {
-                    var wi = cargoItems[i];
+                    var wi = worldItemsInCargo[i];
                     if (wi == null) continue;
 
                     Transform t = wi.transform;
