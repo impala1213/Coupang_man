@@ -495,6 +495,7 @@ public class GameSession : MonoBehaviour
                 Transform t = snap.cargo[i].t;
                 if (t == null) continue;
 
+                t.SetParent(null, true);
                 SceneManager.MoveGameObjectToScene(t.gameObject, toScene);
 
                 if (toContainer.cargoRoot != null)
@@ -514,6 +515,7 @@ public class GameSession : MonoBehaviour
         // 2) Move player into target scene and place preserving relative pose to container
         if (playerRoot != null)
         {
+            playerRoot.SetParent(null, true);
             SceneManager.MoveGameObjectToScene(playerRoot.gameObject, toScene);
 
             // ALWAYS preserve lever-time relative pose to container (per project rules)
