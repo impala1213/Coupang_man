@@ -178,6 +178,8 @@ public class InventorySystem : MonoBehaviour
         }
 
         var def = worldItem.definition;
+        ContractCargoMarker cargoMarker = worldItem.GetComponent<ContractCargoMarker>();
+        bool shouldNotifyContractPickup = cargoMarker != null && !cargoMarker.WasPicked;
         int need = Mathf.Clamp(def.slotSize, 1, slotCount);
 
         int where = FindContiguousSpace(need);
@@ -211,6 +213,13 @@ public class InventorySystem : MonoBehaviour
             {
                 // Normal item: let WorldItem handle cleanup (usually destroy)
                 worldItem.OnPickedUp(true);
+            }
+
+            if (shouldNotifyContractPickup)
+            {
+                cargoMarker.MarkPicked();
+                if (GameSession.Instance != null)
+                    GameSession.Instance.RegisterContractCargoPickup();
             }
 
             activeIndex = where;
