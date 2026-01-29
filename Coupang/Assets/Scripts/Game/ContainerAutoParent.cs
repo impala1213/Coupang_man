@@ -18,6 +18,13 @@ public class ContainerAutoParent : MonoBehaviour
     [Tooltip("Which layers are treated as world items for parenting.")]
     public LayerMask worldItemLayers = ~0;
 
+    [Header("Scope")]
+    [Tooltip("If true, items with no parent (dropped into the scene) can be managed.")]
+    public bool includeUnparentedItems = true;
+
+    [Tooltip("Additional roots that count as managed scope (e.g., Player root).")]
+    public Transform[] additionalManagedRoots;
+
     private Collider zoneCollider;
 
     void Awake()
@@ -139,6 +146,19 @@ public class ContainerAutoParent : MonoBehaviour
             return true;
 
         if (outsideParent != null && itemTransform.IsChildOf(outsideParent))
+            return true;
+
+        if (additionalManagedRoots != null)
+        {
+            for (int i = 0; i < additionalManagedRoots.Length; i++)
+            {
+                var root = additionalManagedRoots[i];
+                if (root != null && itemTransform.IsChildOf(root))
+                    return true;
+            }
+        }
+
+        if (includeUnparentedItems && itemTransform.parent == null)
             return true;
 
         return false;
