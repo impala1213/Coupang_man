@@ -35,6 +35,9 @@ public static class PlanetSelectionState
     // "Confirmed" == "Locked" (once player clicks an option, they cannot change it)
     private static bool s_confirmed;
 
+    private static bool s_hasLastSelection;
+    private static Offer s_lastSelection;
+
     /// <summary>
     /// True when exactly 2 valid candidates exist.
     /// </summary>
@@ -57,6 +60,27 @@ public static class PlanetSelectionState
     /// True when the current selection is confirmed/locked.
     /// </summary>
     public static bool HasConfirmed => HasSelection && s_confirmed;
+
+    public static bool HasLastSelection => s_hasLastSelection && s_lastSelection.IsValid;
+
+    public static Offer GetLastSelection() => s_lastSelection;
+
+    public static bool TryGetSelection(out Offer offer)
+    {
+        offer = default;
+        if (!HasSelection)
+            return false;
+
+        offer = s_candidates[s_selectedIndex];
+        return offer.IsValid;
+    }
+
+    public static void RememberSelection(Offer offer)
+    {
+        s_lastSelection = offer;
+        s_hasLastSelection = offer.IsValid;
+        RaiseChanged();
+    }
 
     public static Offer GetCandidate(int index)
     {
@@ -150,6 +174,9 @@ public static class PlanetSelectionState
 
         offer = s_candidates[s_selectedIndex];
 
+        s_lastSelection = offer;
+        s_hasLastSelection = offer.IsValid;
+
         // Clear (so next trip requires a new selection)
         s_candidates = null;
         s_selectedIndex = -1;
@@ -164,6 +191,15 @@ public static class PlanetSelectionState
         s_candidates = null;
         s_selectedIndex = -1;
         s_confirmed = false;
+        s_lastSelection = default;
+        s_hasLastSelection = false;
+        RaiseChanged();
+    }
+
+    public static void ClearLastSelection()
+    {
+        s_lastSelection = default;
+        s_hasLastSelection = false;
         RaiseChanged();
     }
 
