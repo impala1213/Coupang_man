@@ -63,6 +63,9 @@ public class GameSession : MonoBehaviour
     [Tooltip("Optional: ship UI root to hide while on planet.")]
     [SerializeField] private Transform shipUiRoot;
 
+    [Tooltip("If true, hides ship UI while on planet.")]
+    [SerializeField] private bool hideShipUiOnPlanet = false;
+
     [Header("Cinematic")]
     [SerializeField] private float minCinematicSeconds = 0f;
 
@@ -474,6 +477,11 @@ public class GameSession : MonoBehaviour
             snap = CaptureSnapshot(fromContainer, fromScene);
         }
         pendingSnapshot.valid = false;
+
+        if (snap.cargo == null || snap.cargo.Count == 0)
+        {
+            snap = CaptureSnapshot(fromContainer, fromScene);
+        }
 
         Transform toFrame = toContainer.containerRoot != null ? toContainer.containerRoot : toContainer.transform;
 
@@ -1271,10 +1279,13 @@ public class GameSession : MonoBehaviour
         if (hideShipContainerOnPlanet && shipStageContainer != null)
             shipStageContainer.gameObject.SetActive(visible);
 
-        if (shipUiRoot != null)
-            shipUiRoot.gameObject.SetActive(visible);
-        else
-            SetShipUiBySceneCanvases(visible);
+        if (hideShipUiOnPlanet)
+        {
+            if (shipUiRoot != null)
+                shipUiRoot.gameObject.SetActive(visible);
+            else
+                SetShipUiBySceneCanvases(visible);
+        }
     }
 
     private void SetShipUiBySceneCanvases(bool visible)
