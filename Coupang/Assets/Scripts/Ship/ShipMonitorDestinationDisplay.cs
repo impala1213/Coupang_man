@@ -86,6 +86,14 @@ public class ShipMonitorDestinationDisplay : MonoBehaviour
     {
         bool hasSelection = PlanetSelectionState.HasSelection;
         bool isConfirmed = PlanetSelectionState.HasConfirmed;
+        bool hasLastSelection = PlanetSelectionState.HasLastSelection;
+
+        if (!hasSelection && hasLastSelection)
+        {
+            var last = PlanetSelectionState.GetLastSelection();
+            ApplyOffer(last);
+            return;
+        }
 
         if (!hasSelection || (!showEvenIfNotConfirmed && !isConfirmed))
         {
@@ -98,6 +106,11 @@ public class ShipMonitorDestinationDisplay : MonoBehaviour
         int sel = PlanetSelectionState.GetSelectedIndex();
         var offer = PlanetSelectionState.GetCandidate(sel);
 
+        ApplyOffer(offer);
+    }
+
+    private void ApplyOffer(PlanetSelectionState.Offer offer)
+    {
         if (destinationText != null)
             destinationText.text = offer.planet != null ? offer.planet.GetDisplayLabel() : "(None)";
 
