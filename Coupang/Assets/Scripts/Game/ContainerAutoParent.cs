@@ -87,9 +87,8 @@ public class ContainerAutoParent : MonoBehaviour
                 continue;
 
             Transform t = wi.transform;
-            Vector3 pos = t.position;
 
-            if (bounds.Contains(pos))
+            if (IsInsideZone(wi, bounds))
             {
                 ParentToContainer(t);
             }
@@ -178,6 +177,10 @@ public class ContainerAutoParent : MonoBehaviour
     /// </summary>
     private bool ShouldIgnore(WorldItem wi)
     {
+        // Ignore anything explicitly flagged (e.g., held visuals, carried items).
+        if (wi.ignoreContainerAutoParent)
+            return true;
+
         // 1) Mounted on a carrier: always keep carrier as parent.
         if (IsMountedOnCarrier(wi))
             return true;
@@ -214,6 +217,34 @@ public class ContainerAutoParent : MonoBehaviour
         return false;
     }
 
+
+
+/// <summary>
+/// Robust "inside zone" test. Using transform.position alone is unreliable when item pivots are outside
+/// the trigger (e.g., pivot at the bottom). We treat an item as inside if any of its colliders' bounds
+/// intersects the zone bounds.
+/// </summary>
+private bool IsInsideZone(WorldItem wi, Bounds zoneBounds)
+{
+    if (wi == null) return false;
+
+    var cols = wi.GetComponentsInChildren<Collider>(true);
+    if (cols != null && cols.Length > 0)
+    {
+        for (int i = 0; i < cols.Length; i++)
+        {
+            var c = cols[i];
+            if (c == null || !c.enabled) continue;
+
+            // Intersects catches partial overlap; Contains(center) helps for tiny colliders.
+            if (zoneBounds.Intersects(c.bounds) || zoneBounds.Contains(c.bounds.center))
+                return true;
+        }
+    }
+
+    // Fallback: pivot check
+    return zoneBounds.Contains(wi.transform.position);
+}
     private void ParentToContainer(Transform itemTransform)
     {
         if (containerRoot == null) return;

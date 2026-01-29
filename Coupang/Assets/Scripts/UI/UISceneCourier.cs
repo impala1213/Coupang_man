@@ -81,7 +81,19 @@ public class UISceneCourier : MonoBehaviour
             MoveToScene(ship, shipUIParent, restoreSiblingIndex: true);
     }
 
-    private void MoveToScene(Scene target, Transform desiredParent, bool restoreSiblingIndex = false)
+    
+    /// <summary>
+    /// Call this from a persistent manager (e.g., GameSession) BEFORE unloading the stage scene.
+    /// If the HUD lives in the stage scene when it is unloaded, Unity will destroy it.
+    /// </summary>
+    public void ForceMoveToShip()
+    {
+        var ship = FindLoadedSceneByName(shipSceneName);
+        if (ship.IsValid())
+            MoveToScene(ship, shipUIParent, restoreSiblingIndex: true);
+    }
+
+private void MoveToScene(Scene target, Transform desiredParent, bool restoreSiblingIndex = false)
     {
         // Ensure we are not parented under a ship root that may be disabled.
         transform.SetParent(null, true);

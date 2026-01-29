@@ -75,11 +75,20 @@ public static class PlanetSelectionState
         return offer.IsValid;
     }
 
+    /// <summary>
+    /// Remember the last selection for later (e.g., showing "last destination" on return).
+    /// IMPORTANT: This should NOT raise Changed.
+    /// 
+    /// Reason:
+    /// GameSession calls RememberSelection at launch time.
+    /// If this raised Changed, listeners like ContractCargoSpawner could interpret it as a new selection
+    /// and accidentally re-spawn/refill contract cargo, causing "picked up items come back" bugs.
+    /// </summary>
     public static void RememberSelection(Offer offer)
     {
         s_lastSelection = offer;
         s_hasLastSelection = offer.IsValid;
-        RaiseChanged();
+        // Intentionally no RaiseChanged().
     }
 
     public static Offer GetCandidate(int index)

@@ -37,6 +37,11 @@ public class GameSession : MonoBehaviour
     [Tooltip("If true, the player must pick up at least one generated contract cargo item before launch.")]
     [SerializeField] private bool requireContractPickupToLaunch = true;
 
+
+[Header("Transfer (Teleport)")]
+[Tooltip("Small upward offset applied to cargo after scene transfer to prevent spawning slightly below the container floor.")]
+[SerializeField] private float cargoTeleportYOffset = 0.05f;
+
     [Header("Drop Zone Placement (Fallback Random)")]
     [SerializeField] private float dropZoneMinDistanceFromLanding = 40f;
     [SerializeField] private float dropZoneMaxDistanceFromLanding = 90f;
@@ -97,9 +102,11 @@ public class GameSession : MonoBehaviour
     private struct CargoRelPose
     {
         public Transform t;
-        public Vector3 localPos;
-        public Quaternion localRot;
-        public Vector3 localScale;
+        // Position/rotation relative to the container frame at snapshot time (scale-independent)
+        public Vector3 relPos;
+        public Quaternion relRot;
+        // Preserve world scale across scenes (independent of parent scale)
+        public Vector3 worldScale;
     }
 
     private struct TransferSnapshot
@@ -348,6 +355,9 @@ public class GameSession : MonoBehaviour
             ApplyMissionCargoCleanupOnReturn();
         }
 
+        // Move HUD/UI back to ship BEFORE unloading gameplay scene
+        ForceReturnAllUiToShip();
+
         // Unload gameplay scene (everything left behind is destroyed, per design)
         if (gameplayScene.IsValid())
         {
@@ -415,7 +425,7 @@ public class GameSession : MonoBehaviour
         Transform fromFrame = fromContainer.containerRoot != null ? fromContainer.containerRoot : fromContainer.transform;
         if (playerRoot != null && fromFrame != null)
         {
-            snap.playerRelPos = fromFrame.InverseTransformPoint(playerRoot.position);
+            snap.playerRelPos = InverseTransformPointNoScale(fromFrame, playerRoot.position);
             snap.playerRelRot = Quaternion.Inverse(fromFrame.rotation) * playerRoot.rotation;
         }
         else
@@ -424,40 +434,26 @@ public class GameSession : MonoBehaviour
             snap.playerRelRot = Quaternion.identity;
         }
 
-        // Cargo poses relative to cargoRoot at lever time (ONLY top-level items).
-        snap.cargo = new List<CargoRelPose>(64);
-
-        var cargoItems = GatherCargoWorldItems(fromContainer, fromScene);
-        if (cargoItems != null && fromContainer.cargoRoot != null)
-        {
-            var added = new HashSet<Transform>();
-            var worldItemsInCargo = GatherCargoWorldItems(fromContainer, fromScene);
-            if (worldItemsInCargo != null && worldItemsInCargo.Count > 0)
-            {
-                for (int i = 0; i < worldItemsInCargo.Count; i++)
+                // Cargo poses at lever time (ONLY WorldItems).
+                snap.cargo = new List<CargoRelPose>(64);
+        
+                var worldItemsInCargo = GatherCargoWorldItems(fromContainer, fromScene);
+                if (worldItemsInCargo != null && worldItemsInCargo.Count > 0)
                 {
-                    var wi = worldItemsInCargo[i];
-                    if (wi == null) continue;
-
-                    Transform t = wi.transform;
-                    if (!added.Add(t)) continue;
-
-                    AddCargoPose(fromContainer.cargoRoot, t, snap.cargo);
+                    var added = new HashSet<Transform>();
+                    for (int i = 0; i < worldItemsInCargo.Count; i++)
+                    {
+                        var wi = worldItemsInCargo[i];
+                        if (wi == null) continue;
+        
+                        Transform t = wi.transform;
+                        if (!added.Add(t)) continue;
+        
+                        AddCargoPose(fromFrame, t, snap.cargo);
+                    }
                 }
-            }
 
-            var fallbackTransforms = GatherCargoRootChildren(fromContainer.cargoRoot, fromScene);
-            for (int i = 0; i < fallbackTransforms.Count; i++)
-            {
-                Transform t = fallbackTransforms[i];
-                if (t == null) continue;
-                if (!added.Add(t)) continue;
-
-                AddCargoPose(fromContainer.cargoRoot, t, snap.cargo);
-            }
-        }
-
-        snap.valid = true;
+snap.valid = true;
         snap.fromContainerId = fromContainer.GetInstanceID();
         return snap;
     }
@@ -522,37 +518,44 @@ public class GameSession : MonoBehaviour
                 t.SetParent(null, true);
                 SceneManager.MoveGameObjectToScene(t.gameObject, toScene);
 
+                // Place using container frame (scale-independent), then parent under cargoRoot keeping world pose.
+                if (toFrame != null)
+                {
+                    Vector3 worldPos = TransformPointNoScale(toFrame, snap.cargo[i].relPos);
+                    // Nudge upward a bit to avoid spawning slightly below the container floor due to pivot/bounds differences.
+                    if (cargoTeleportYOffset != 0f) worldPos += Vector3.up * cargoTeleportYOffset;
+                    Quaternion worldRot = toFrame.rotation * snap.cargo[i].relRot;
+                    t.SetPositionAndRotation(worldPos, worldRot);
+                }
+
                 if (toContainer.cargoRoot != null)
                 {
-                    t.SetParent(toContainer.cargoRoot, false);
-                    t.localPosition = snap.cargo[i].localPos;
-                    t.localRotation = snap.cargo[i].localRot;
-                    t.localScale = snap.cargo[i].localScale;
+                    t.SetParent(toContainer.cargoRoot, true);
+
+                    // Preserve world scale across different parent scaling.
+                    Vector3 parentScale = toContainer.cargoRoot.lossyScale;
+                    Vector3 ws = snap.cargo[i].worldScale;
+
+                    float sx = Mathf.Abs(parentScale.x) > 1e-6f ? ws.x / parentScale.x : 1f;
+                    float sy = Mathf.Abs(parentScale.y) > 1e-6f ? ws.y / parentScale.y : 1f;
+                    float sz = Mathf.Abs(parentScale.z) > 1e-6f ? ws.z / parentScale.z : 1f;
+
+                    t.localScale = new Vector3(sx, sy, sz);
+
+                    // Stabilize physics after teleport (prevents immediate "drop" from carried velocity)
+                    var rb = t.GetComponent<Rigidbody>();
+                    if (rb != null && !rb.isKinematic)
+                    {
+                        rb.linearVelocity = Vector3.zero;
+                        rb.angularVelocity = Vector3.zero;
+                        rb.Sleep();
+                    }
+
                 }
                 else
                 {
                     t.SetParent(null, true);
                 }
-            }
-        }
-
-        // 1b) Ensure any remaining direct cargoRoot children get moved as a safety net.
-        if (fromContainer.cargoRoot != null && toContainer.cargoRoot != null)
-        {
-            var remaining = new List<Transform>();
-            for (int i = 0; i < fromContainer.cargoRoot.childCount; i++)
-                remaining.Add(fromContainer.cargoRoot.GetChild(i));
-
-            for (int i = 0; i < remaining.Count; i++)
-            {
-                Transform t = remaining[i];
-                if (t == null) continue;
-                if (movedCargo != null && movedCargo.Contains(t)) continue;
-                if (t.gameObject.scene != fromScene) continue;
-
-                t.SetParent(null, true);
-                SceneManager.MoveGameObjectToScene(t.gameObject, toScene);
-                t.SetParent(toContainer.cargoRoot, true);
             }
         }
 
@@ -565,7 +568,7 @@ public class GameSession : MonoBehaviour
             // ALWAYS preserve lever-time relative pose to container (per project rules)
             if (toFrame != null)
             {
-                playerRoot.position = toFrame.TransformPoint(snap.playerRelPos);
+                playerRoot.position = TransformPointNoScale(toFrame, snap.playerRelPos);
                 playerRoot.rotation = toFrame.rotation * snap.playerRelRot;
             }
         }
@@ -1181,6 +1184,12 @@ public class GameSession : MonoBehaviour
                 var wi = worldItems[i];
                 if (wi == null) continue;
                 if (wi.gameObject.scene != scene) continue;
+                // Exclude anything currently owned by the player (held visuals, carried items, carrier-mounted cargo).
+                if (playerRoot != null && wi.transform.IsChildOf(playerRoot)) continue;
+                if (wi.isOnCarrier || wi.carrierOwner != null) continue;
+                // Fallback: child of a CarrierController (but not the carrier object itself)
+                var ownerCarrier = wi.GetComponentInParent<CarrierController>();
+                if (ownerCarrier != null && wi.GetComponent<CarrierController>() == null) continue;
                 if (HasWorldItemAncestor(wi.transform, container.cargoRoot))
                     continue;
 
@@ -1206,6 +1215,15 @@ public class GameSession : MonoBehaviour
                 if (autoParent != null && wi.ignoreContainerAutoParent)
                     continue;
 
+                // Exclude anything currently owned by the player (held visuals, carried items, carrier-mounted cargo).
+                if (playerRoot != null && wi.transform.IsChildOf(playerRoot))
+                    continue;
+                if (wi.isOnCarrier || wi.carrierOwner != null)
+                    continue;
+                var ownerCarrier = wi.GetComponentInParent<CarrierController>();
+                if (ownerCarrier != null && wi.GetComponent<CarrierController>() == null)
+                    continue;
+
                 if (seen.Add(wi))
                     results.Add(wi);
             }
@@ -1214,7 +1232,23 @@ public class GameSession : MonoBehaviour
         return results;
     }
 
-    private static List<Transform> GatherCargoRootChildren(Transform cargoRoot, Scene scene)
+    
+    // ─────────────────────────────────────────────
+    // Transform helpers (ignore scale)
+    // ─────────────────────────────────────────────
+    private static Vector3 InverseTransformPointNoScale(Transform frame, Vector3 worldPoint)
+    {
+        // Equivalent to frame.InverseTransformPoint, but ignores frame scale.
+        return Quaternion.Inverse(frame.rotation) * (worldPoint - frame.position);
+    }
+
+    private static Vector3 TransformPointNoScale(Transform frame, Vector3 localPoint)
+    {
+        // Equivalent to frame.TransformPoint, but ignores frame scale.
+        return frame.position + frame.rotation * localPoint;
+    }
+
+private static List<Transform> GatherCargoRootChildren(Transform cargoRoot, Scene scene)
     {
         var results = new List<Transform>();
         if (cargoRoot == null || !scene.IsValid())
@@ -1231,13 +1265,15 @@ public class GameSession : MonoBehaviour
         return results;
     }
 
-    private static void AddCargoPose(Transform cargoRoot, Transform target, List<CargoRelPose> cargo)
+    private static void AddCargoPose(Transform frame, Transform target, List<CargoRelPose> cargo)
     {
         CargoRelPose p = new CargoRelPose();
         p.t = target;
-        p.localPos = cargoRoot.InverseTransformPoint(target.position);
-        p.localRot = Quaternion.Inverse(cargoRoot.rotation) * target.rotation;
-        p.localScale = target.localScale;
+        // Store pose relative to the container frame, ignoring frame scale (prevents "weird offsets" when
+        // ship/planet container prefabs have different scaling).
+        p.relPos = InverseTransformPointNoScale(frame, target.position);
+        p.relRot = Quaternion.Inverse(frame.rotation) * target.rotation;
+        p.worldScale = target.lossyScale;
         cargo.Add(p);
     }
 
@@ -1329,7 +1365,20 @@ public class GameSession : MonoBehaviour
             autoParent.ResyncSceneItems();
     }
 
-    private void SetDoorOpen(Animator animator, bool isOpen)
+    
+    private void ForceReturnAllUiToShip()
+    {
+        // Ensure any HUD/UI roots that were moved into the gameplay scene are moved back
+        // BEFORE the gameplay scene is unloaded (otherwise Unity destroys them).
+        var couriers = FindObjectsByType<UISceneCourier>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < couriers.Length; i++)
+        {
+            if (couriers[i] == null) continue;
+            couriers[i].ForceMoveToShip();
+        }
+    }
+
+private void SetDoorOpen(Animator animator, bool isOpen)
     {
         if (animator == null) return;
         animator.SetBool(DoorOpenHash, isOpen);

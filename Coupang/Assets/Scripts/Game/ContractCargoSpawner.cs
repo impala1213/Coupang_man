@@ -29,6 +29,12 @@ public class ContractCargoSpawner : MonoBehaviour
 
     private readonly List<GameObject> _spawned = new List<GameObject>();
 
+    // Guard: prevent accidental "refill" when selection Changed is raised without a real user change
+    // (e.g., GameSession calling PlanetSelectionState.RememberSelection() at launch).
+    private DeliveryContractDefinition _spawnedForContract;
+    private string _spawnedForContractName;
+    private bool _hasSpawnedForContract;
+
     private void Awake()
     {
         if (!spawnBounds)
@@ -52,6 +58,7 @@ public class ContractCargoSpawner : MonoBehaviour
         {
             if (clearPrevious)
                 ClearSpawned();
+            ResetGuard();
             return;
         }
 
@@ -60,6 +67,14 @@ public class ContractCargoSpawner : MonoBehaviour
         {
             if (clearPrevious)
                 ClearSpawned();
+            ResetGuard();
+            return;
+        }
+
+        // ✅ 핵심: 같은 계약인데 Changed가 한번 더 불리면(런치/리멤버/리프레시 등)
+        // 이미 일부 아이템을 집어 들었더라도 다시 "풀셋"으로 리필하면 안 된다.
+        if (IsSameContractAsSpawned(offer.contract) && _hasSpawnedForContract)
+        {
             return;
         }
 
@@ -67,6 +82,25 @@ public class ContractCargoSpawner : MonoBehaviour
 
         if (GameSession.Instance != null)
             GameSession.Instance.ResetContractCargoPickup();
+    }
+
+    private bool IsSameContractAsSpawned(DeliveryContractDefinition contract)
+    {
+        if (contract == null) return false;
+        if (_spawnedForContract == contract) return true;
+
+        // Addressables/instancing 등으로 레퍼런스가 달라지는 경우를 대비한 보강.
+        if (!string.IsNullOrEmpty(_spawnedForContractName) && contract.name == _spawnedForContractName)
+            return true;
+
+        return false;
+    }
+
+    private void ResetGuard()
+    {
+        _spawnedForContract = null;
+        _spawnedForContractName = null;
+        _hasSpawnedForContract = false;
     }
 
     public void SpawnContractCargo(DeliveryContractDefinition contract)
@@ -82,6 +116,10 @@ public class ContractCargoSpawner : MonoBehaviour
 
         if (clearPrevious)
             ClearSpawned();
+
+        _spawnedForContract = contract;
+        _spawnedForContractName = contract.name;
+        _hasSpawnedForContract = true;
 
         var positions = BuildSpawnPositions(CountTotalItems(contract));
         int positionIndex = 0;
@@ -185,5 +223,8 @@ public class ContractCargoSpawner : MonoBehaviour
                 Destroy(_spawned[i]);
         }
         _spawned.Clear();
+
+        // If we cleared, allow a future explicit selection change to spawn again.
+        ResetGuard();
     }
 }

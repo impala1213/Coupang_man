@@ -441,6 +441,15 @@ public class InventorySystem : MonoBehaviour
 
         _heldInstance = UnityEngine.Object.Instantiate(def.worldPrefab);
         _heldInstance.name = def.worldPrefab.name + "_Held";
+        // IMPORTANT: This is a purely visual held instance.
+        // Prevent container auto-parent / cargo transfer from treating it as real cargo.
+        var heldWorldItems = _heldInstance.GetComponentsInChildren<WorldItem>(true);
+        foreach (var hwi in heldWorldItems)
+        {
+            if (!hwi) continue;
+            hwi.ignoreContainerAutoParent = true;
+        }
+
 
         // Disable physics/interaction on held instance
         if (disableCollidersOnHeld)
@@ -465,14 +474,16 @@ public class InventorySystem : MonoBehaviour
 
         if (disableWorldItemOnHeld)
         {
-            var wi = _heldInstance.GetComponent<WorldItem>();
-            if (wi) wi.enabled = false;
+            var wis = _heldInstance.GetComponentsInChildren<WorldItem>(true);
+            foreach (var wi in wis)
+                if (wi) wi.enabled = false;
         }
 
         if (disablePickupInteractableOnHeld)
         {
-            var pi = _heldInstance.GetComponent<PickupInteractable>();
-            if (pi) pi.enabled = false;
+            var pis = _heldInstance.GetComponentsInChildren<PickupInteractable>(true);
+            foreach (var pi in pis)
+                if (pi) pi.enabled = false;
         }
 
         // Decide socket by ItemDefinition.carryKind (single source of truth).
