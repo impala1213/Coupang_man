@@ -33,6 +33,10 @@ public class GameSession : MonoBehaviour
     [Tooltip("Fallback radius for the shield (if not overridden by the drop zone prefab or StageContext).")]
     [SerializeField] private float defaultShieldRadius = 10f;
 
+    [Header("Launch Rules")]
+    [Tooltip("If true, the player must pick up at least one generated contract cargo item before launch.")]
+    [SerializeField] private bool requireContractPickupToLaunch = true;
+
     [Header("Drop Zone Placement (Fallback Random)")]
     [SerializeField] private float dropZoneMinDistanceFromLanding = 40f;
     [SerializeField] private float dropZoneMaxDistanceFromLanding = 90f;
@@ -49,6 +53,12 @@ public class GameSession : MonoBehaviour
 
     [Tooltip("Optional: ship environment root to hide while on planet.")]
     [SerializeField] private Transform shipEnvironmentRoot;
+
+    [Tooltip("If true, disables the ship container object while on planet.")]
+    [SerializeField] private bool hideShipContainerOnPlanet = true;
+
+    [Tooltip("Optional: bootstrapper to refresh planet candidates on return.")]
+    [SerializeField] private PlanetSelectionBootstrapper selectionBootstrapper;
 
     [Header("Cinematic")]
     [SerializeField] private float minCinematicSeconds = 0f;
@@ -96,6 +106,7 @@ public class GameSession : MonoBehaviour
     }
 
     private TransferSnapshot pendingSnapshot;
+    private bool hasPickedContractCargo;
 
     private void Awake()
     {
@@ -146,7 +157,7 @@ public class GameSession : MonoBehaviour
 
             ResolveShipStageContainer();
 
-            // Mission rule: before leaving Ship, all mission cargo must be inside shipStageContainer.cargoRoot.
+            // Resolve selected contract for launch checks.
             DeliveryContractDefinition launchContract = null;
             if (requirePlanetSelection && PlanetSelectionState.HasSelection)
             {
@@ -155,16 +166,14 @@ public class GameSession : MonoBehaviour
                 launchContract = offer.contract;
             }
 
-            if (shipStageContainer != null && shipScene.IsValid())
+            if (requireContractPickupToLaunch && launchContract != null && !hasPickedContractCargo)
             {
-                if (!HasAllRequiredCargoInContainer(shipStageContainer, shipScene, launchContract, out string missingReport))
-                {
-                    Debug.LogWarning(missingReport);
-                    return;
-                }
-
-                pendingSnapshot = CaptureSnapshot(shipStageContainer, shipScene);
+                Debug.LogWarning("[GameSession] Pick up at least one contract cargo item before launch.");
+                return;
             }
+
+            if (shipStageContainer != null && shipScene.IsValid())
+                pendingSnapshot = CaptureSnapshot(shipStageContainer, shipScene);
 
             StartCoroutine(StartLandingRoutine());
             return;
@@ -175,8 +184,7 @@ public class GameSession : MonoBehaviour
             // Capture snapshot at the exact lever time (player pose + cargo positions).
             if (activeStageContainer == null && gameplayScene.IsValid())
             {
-                activeStageContext = FindStageContextInScene(gameplayScene);
-                activeStageContainer = ResolveStageContainerFromContext(activeStageContext, gameplayScene);
+                ResolveActiveStageContextAndContainer(gameplayScene);
             }
 
             if (activeStageContainer != null && gameplayScene.IsValid())
@@ -235,6 +243,8 @@ public class GameSession : MonoBehaviour
         if (activeContract == null)
             SelectContract();
 
+        hasPickedContractCargo = false;
+
         // Load gameplay scene
         if (!SceneManager.GetSceneByName(targetGameplaySceneName).IsValid())
         {
@@ -252,8 +262,7 @@ public class GameSession : MonoBehaviour
         }
 
         // Find StageContext + StageContainer inside the gameplay scene.
-        activeStageContext = FindStageContextInScene(gameplayScene);
-        activeStageContainer = ResolveStageContainerFromContext(activeStageContext, gameplayScene);
+        ResolveActiveStageContextAndContainer(gameplayScene);
 
         if (activeStageContainer == null)
         {
@@ -310,8 +319,7 @@ public class GameSession : MonoBehaviour
 
         if (activeStageContainer == null && gameplayScene.IsValid())
         {
-            activeStageContext = FindStageContextInScene(gameplayScene);
-            activeStageContainer = ResolveStageContainerFromContext(activeStageContext, gameplayScene);
+            ResolveActiveStageContextAndContainer(gameplayScene);
         }
 
         if (shipStageContainer == null)
@@ -354,6 +362,8 @@ public class GameSession : MonoBehaviour
         SetShipEnvironmentVisible(true);
 
         state = SessionState.OnShip;
+
+        RefreshShipPlanetCandidates();
     }
 
     private void SelectContract()
@@ -368,6 +378,16 @@ public class GameSession : MonoBehaviour
 
         if (dir != null)
             activeContract = dir.GetRandomContract();
+    }
+
+    public void RegisterContractCargoPickup()
+    {
+        hasPickedContractCargo = true;
+    }
+
+    public void ResetContractCargoPickup()
+    {
+        hasPickedContractCargo = false;
     }
 
     private TransferSnapshot CaptureSnapshot(StageContainer fromContainer, Scene fromScene)
@@ -475,6 +495,7 @@ public class GameSession : MonoBehaviour
                 Transform t = snap.cargo[i].t;
                 if (t == null) continue;
 
+                t.SetParent(null, true);
                 SceneManager.MoveGameObjectToScene(t.gameObject, toScene);
 
                 if (toContainer.cargoRoot != null)
@@ -494,6 +515,7 @@ public class GameSession : MonoBehaviour
         // 2) Move player into target scene and place preserving relative pose to container
         if (playerRoot != null)
         {
+            playerRoot.SetParent(null, true);
             SceneManager.MoveGameObjectToScene(playerRoot.gameObject, toScene);
 
             // ALWAYS preserve lever-time relative pose to container (per project rules)
@@ -761,6 +783,14 @@ public class GameSession : MonoBehaviour
         }
     }
 
+    private static Vector2 RandomUnitCircleDirection()
+    {
+        Vector2 dir = Random.insideUnitCircle;
+        if (dir.sqrMagnitude < 0.0001f)
+            dir = Vector2.up;
+        return dir.normalized;
+    }
+
     private Quaternion BuildSpawnRotation(StageContext.SpawnEntry e, Vector3 groundNormal, Vector3 fallbackForward)
     {
         Vector3 up = e.alignToGroundNormal ? groundNormal : Vector3.up;
@@ -768,9 +798,7 @@ public class GameSession : MonoBehaviour
         Vector3 fwd;
         if (e.randomYaw)
         {
-            Vector2 d = Random.insideUnitCircle;
-            if (d.sqrMagnitude < 0.0001f) d = Vector2.up;
-            d.Normalize();
+            Vector2 d = RandomUnitCircleDirection();
             fwd = new Vector3(d.x, 0f, d.y);
         }
         else
@@ -803,10 +831,7 @@ public class GameSession : MonoBehaviour
 
         for (int i = 0; i < attempts; i++)
         {
-            Vector2 dir = Random.insideUnitCircle;
-            if (dir.sqrMagnitude < 0.0001f)
-                dir = Vector2.up;
-            dir.Normalize();
+            Vector2 dir = RandomUnitCircleDirection();
 
             float d = Random.Range(minDist, maxDist);
             Vector3 candidateXZ = centerPos + new Vector3(dir.x, 0f, dir.y) * d;
@@ -846,10 +871,7 @@ public class GameSession : MonoBehaviour
 
         for (int i = 0; i < Mathf.Max(1, attempts); i++)
         {
-            Vector2 dir = Random.insideUnitCircle;
-            if (dir.sqrMagnitude < 0.0001f)
-                dir = Vector2.up;
-            dir.Normalize();
+            Vector2 dir = RandomUnitCircleDirection();
 
             float d = Random.Range(minDist, Mathf.Max(minDist + 1f, maxDist));
             Vector3 candidateXZ = centerPos + new Vector3(dir.x, 0f, dir.y) * d;
@@ -1139,6 +1161,12 @@ public class GameSession : MonoBehaviour
         return null;
     }
 
+    private void ResolveActiveStageContextAndContainer(Scene scene)
+    {
+        activeStageContext = FindStageContextInScene(scene);
+        activeStageContainer = ResolveStageContainerFromContext(activeStageContext, scene);
+    }
+
     private StageContainer ResolveStageContainerFromContext(StageContext ctx, Scene scene)
     {
         if (ctx != null && ctx.stageContainer != null)
@@ -1188,5 +1216,21 @@ public class GameSession : MonoBehaviour
     {
         if (shipEnvironmentRoot != null)
             shipEnvironmentRoot.gameObject.SetActive(visible);
+
+        if (hideShipContainerOnPlanet && shipStageContainer != null)
+            shipStageContainer.gameObject.SetActive(visible);
+    }
+
+    private void RefreshShipPlanetCandidates()
+    {
+        PlanetSelectionState.ClearLastSelection();
+
+        if (selectionBootstrapper == null)
+        {
+            selectionBootstrapper = FindFirstObjectByType<PlanetSelectionBootstrapper>();
+        }
+
+        if (selectionBootstrapper != null)
+            selectionBootstrapper.EnsureCandidates();
     }
 }
