@@ -427,7 +427,8 @@ public class GameSession : MonoBehaviour
         // Cargo poses relative to cargoRoot at lever time (ONLY top-level items).
         snap.cargo = new List<CargoRelPose>(64);
 
-        if (fromContainer.cargoRoot != null)
+        var cargoItems = GatherCargoWorldItems(fromContainer, fromScene);
+        if (cargoItems != null && fromContainer.cargoRoot != null)
         {
             var added = new HashSet<Transform>();
             var worldItemsInCargo = GatherCargoWorldItems(fromContainer, fromScene);
