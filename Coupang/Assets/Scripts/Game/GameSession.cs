@@ -507,12 +507,17 @@ public class GameSession : MonoBehaviour
         }
 
         // 1) Move cargo objects into target scene and re-parent under toContainer.cargoRoot using the saved local pose
+        HashSet<Transform> movedCargo = null;
         if (snap.cargo != null)
         {
             for (int i = 0; i < snap.cargo.Count; i++)
             {
                 Transform t = snap.cargo[i].t;
                 if (t == null) continue;
+
+                if (movedCargo == null)
+                    movedCargo = new HashSet<Transform>();
+                movedCargo.Add(t);
 
                 t.SetParent(null, true);
                 SceneManager.MoveGameObjectToScene(t.gameObject, toScene);
@@ -528,6 +533,26 @@ public class GameSession : MonoBehaviour
                 {
                     t.SetParent(null, true);
                 }
+            }
+        }
+
+        // 1b) Ensure any remaining direct cargoRoot children get moved as a safety net.
+        if (fromContainer.cargoRoot != null && toContainer.cargoRoot != null)
+        {
+            var remaining = new List<Transform>();
+            for (int i = 0; i < fromContainer.cargoRoot.childCount; i++)
+                remaining.Add(fromContainer.cargoRoot.GetChild(i));
+
+            for (int i = 0; i < remaining.Count; i++)
+            {
+                Transform t = remaining[i];
+                if (t == null) continue;
+                if (movedCargo != null && movedCargo.Contains(t)) continue;
+                if (t.gameObject.scene != fromScene) continue;
+
+                t.SetParent(null, true);
+                SceneManager.MoveGameObjectToScene(t.gameObject, toScene);
+                t.SetParent(toContainer.cargoRoot, true);
             }
         }
 
