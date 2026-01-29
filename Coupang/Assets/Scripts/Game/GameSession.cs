@@ -367,6 +367,7 @@ public class GameSession : MonoBehaviour
         chosenDropZoneCandidate = null;
 
         SetShipEnvironmentVisible(true);
+        ForceShipUiVisible();
 
         state = SessionState.OnShip;
 
@@ -429,19 +430,30 @@ public class GameSession : MonoBehaviour
         var cargoItems = GatherCargoWorldItems(fromContainer, fromScene);
         if (cargoItems != null && fromContainer.cargoRoot != null)
         {
-            for (int i = 0; i < cargoItems.Count; i++)
+            var added = new HashSet<Transform>();
+            var cargoItems = GatherCargoWorldItems(fromContainer, fromScene);
+            if (cargoItems != null && cargoItems.Count > 0)
             {
-                var wi = cargoItems[i];
-                if (wi == null) continue;
+                for (int i = 0; i < cargoItems.Count; i++)
+                {
+                    var wi = cargoItems[i];
+                    if (wi == null) continue;
 
-                Transform t = wi.transform;
+                    Transform t = wi.transform;
+                    if (!added.Add(t)) continue;
 
-                CargoRelPose p = new CargoRelPose();
-                p.t = t;
-                p.localPos = fromContainer.cargoRoot.InverseTransformPoint(t.position);
-                p.localRot = Quaternion.Inverse(fromContainer.cargoRoot.rotation) * t.rotation;
-                p.localScale = t.localScale;
-                snap.cargo.Add(p);
+                    AddCargoPose(fromContainer.cargoRoot, t, snap.cargo);
+                }
+            }
+
+            var fallbackTransforms = GatherCargoRootChildren(fromContainer.cargoRoot, fromScene);
+            for (int i = 0; i < fallbackTransforms.Count; i++)
+            {
+                Transform t = fallbackTransforms[i];
+                if (t == null) continue;
+                if (!added.Add(t)) continue;
+
+                AddCargoPose(fromContainer.cargoRoot, t, snap.cargo);
             }
         }
 
@@ -1177,6 +1189,33 @@ public class GameSession : MonoBehaviour
         return results;
     }
 
+    private static List<Transform> GatherCargoRootChildren(Transform cargoRoot, Scene scene)
+    {
+        var results = new List<Transform>();
+        if (cargoRoot == null || !scene.IsValid())
+            return results;
+
+        for (int i = 0; i < cargoRoot.childCount; i++)
+        {
+            Transform child = cargoRoot.GetChild(i);
+            if (child == null) continue;
+            if (child.gameObject.scene != scene) continue;
+            results.Add(child);
+        }
+
+        return results;
+    }
+
+    private static void AddCargoPose(Transform cargoRoot, Transform target, List<CargoRelPose> cargo)
+    {
+        CargoRelPose p = new CargoRelPose();
+        p.t = target;
+        p.localPos = cargoRoot.InverseTransformPoint(target.position);
+        p.localRot = Quaternion.Inverse(cargoRoot.rotation) * target.rotation;
+        p.localScale = target.localScale;
+        cargo.Add(p);
+    }
+
     private void ResolveShipStageContainer()
     {
         if (shipStageContainer != null)
@@ -1302,6 +1341,14 @@ public class GameSession : MonoBehaviour
                     canvases[k].gameObject.SetActive(visible);
             }
         }
+    }
+
+    private void ForceShipUiVisible()
+    {
+        if (shipUiRoot != null)
+            shipUiRoot.gameObject.SetActive(true);
+        else
+            SetShipUiBySceneCanvases(true);
     }
 
     private void RefreshShipPlanetCandidates()
