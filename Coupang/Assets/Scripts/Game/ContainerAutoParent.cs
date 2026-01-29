@@ -19,6 +19,9 @@ public class ContainerAutoParent : MonoBehaviour
     public LayerMask worldItemLayers = ~0;
 
     [Header("Scope")]
+    [Tooltip("If true, manage all WorldItems in this scene (ignores scope checks).")]
+    public bool manageAllItemsInScene = true;
+
     [Tooltip("If true, items with no parent (dropped into the scene) can be managed.")]
     public bool includeUnparentedItems = true;
 
@@ -142,6 +145,9 @@ public class ContainerAutoParent : MonoBehaviour
     /// </summary>
     private bool IsManagedScope(Transform itemTransform)
     {
+        if (manageAllItemsInScene)
+            return true;
+
         if (containerRoot != null && itemTransform.IsChildOf(containerRoot))
             return true;
 

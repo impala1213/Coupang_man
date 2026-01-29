@@ -60,6 +60,9 @@ public class GameSession : MonoBehaviour
     [Tooltip("Optional: bootstrapper to refresh planet candidates on return.")]
     [SerializeField] private PlanetSelectionBootstrapper selectionBootstrapper;
 
+    [Tooltip("Optional: ship UI root to hide while on planet.")]
+    [SerializeField] private Transform shipUiRoot;
+
     [Header("Cinematic")]
     [SerializeField] private float minCinematicSeconds = 0f;
 
@@ -216,10 +219,11 @@ public class GameSession : MonoBehaviour
         // Pick planet entry (scene + optional contract dir)
         // Prefer a pre-selected planet from the ship monitor.
         PlanetSelectionState.Offer selectedOffer;
-        if (PlanetSelectionState.TryConsumeSelection(out selectedOffer) && selectedOffer.planet != null)
+        if (PlanetSelectionState.TryGetSelection(out selectedOffer) && selectedOffer.planet != null)
         {
             activePlanet = selectedOffer.planet;
             activeContract = selectedOffer.contract;
+            PlanetSelectionState.RememberSelection(selectedOffer);
         }
         else
         {
@@ -416,23 +420,18 @@ public class GameSession : MonoBehaviour
             snap.playerRelRot = Quaternion.identity;
         }
 
-        // Cargo poses relative to cargoRoot at lever time (ONLY items under cargoRoot)
+        // Cargo poses relative to cargoRoot at lever time (ONLY top-level items).
         snap.cargo = new List<CargoRelPose>(64);
 
-        if (fromContainer.cargoRoot != null)
+        var cargoItems = GatherCargoWorldItems(fromContainer, fromScene);
+        if (cargoItems != null && fromContainer.cargoRoot != null)
         {
-            var worldItems = fromContainer.cargoRoot.GetComponentsInChildren<WorldItem>(true);
-            for (int i = 0; i < worldItems.Length; i++)
+            for (int i = 0; i < cargoItems.Count; i++)
             {
-                var wi = worldItems[i];
+                var wi = cargoItems[i];
                 if (wi == null) continue;
-                if (wi.gameObject.scene != fromScene) continue;
 
                 Transform t = wi.transform;
-
-                // Prevent duplicating nested WorldItems (only move top-level WorldItems).
-                if (HasWorldItemAncestor(t, fromContainer.cargoRoot))
-                    continue;
 
                 CargoRelPose p = new CargoRelPose();
                 p.t = t;
@@ -1118,6 +1117,58 @@ public class GameSession : MonoBehaviour
         return false;
     }
 
+    private List<WorldItem> GatherCargoWorldItems(StageContainer container, Scene scene)
+    {
+        if (container == null || !scene.IsValid())
+            return null;
+
+        container.ResolveDefaults();
+
+        var results = new List<WorldItem>(64);
+        var seen = new HashSet<WorldItem>();
+
+        // Primary path: items under cargoRoot (authored container content).
+        if (container.cargoRoot != null)
+        {
+            var worldItems = container.cargoRoot.GetComponentsInChildren<WorldItem>(true);
+            for (int i = 0; i < worldItems.Length; i++)
+            {
+                var wi = worldItems[i];
+                if (wi == null) continue;
+                if (wi.gameObject.scene != scene) continue;
+                if (HasWorldItemAncestor(wi.transform, container.cargoRoot))
+                    continue;
+
+                if (seen.Add(wi))
+                    results.Add(wi);
+            }
+        }
+
+        // Fallback: include any world items inside the ContainerAutoParent volume (even if not parented yet).
+        var autoParent = container.GetComponentInChildren<ContainerAutoParent>(true);
+        var zoneCollider = (autoParent != null) ? autoParent.GetComponent<Collider>() : null;
+        if (autoParent != null && zoneCollider != null)
+        {
+            Bounds bounds = zoneCollider.bounds;
+            var allWorldItems = FindObjectsByType<WorldItem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < allWorldItems.Length; i++)
+            {
+                var wi = allWorldItems[i];
+                if (wi == null) continue;
+                if (wi.gameObject.scene != scene) continue;
+                if (((1 << wi.gameObject.layer) & autoParent.worldItemLayers) == 0) continue;
+                if (!bounds.Contains(wi.transform.position)) continue;
+                if (autoParent != null && wi.ignoreContainerAutoParent)
+                    continue;
+
+                if (seen.Add(wi))
+                    results.Add(wi);
+            }
+        }
+
+        return results;
+    }
+
     private void ResolveShipStageContainer()
     {
         if (shipStageContainer != null)
@@ -1219,11 +1270,32 @@ public class GameSession : MonoBehaviour
 
         if (hideShipContainerOnPlanet && shipStageContainer != null)
             shipStageContainer.gameObject.SetActive(visible);
+
+        if (shipUiRoot != null)
+            shipUiRoot.gameObject.SetActive(visible);
+        else
+            SetShipUiBySceneCanvases(visible);
+    }
+
+    private void SetShipUiBySceneCanvases(bool visible)
+    {
+        if (!shipScene.IsValid()) return;
+        var roots = shipScene.GetRootGameObjects();
+        for (int i = 0; i < roots.Length; i++)
+        {
+            if (roots[i] == null) continue;
+            var canvases = roots[i].GetComponentsInChildren<Canvas>(true);
+            for (int k = 0; k < canvases.Length; k++)
+            {
+                if (canvases[k] != null)
+                    canvases[k].gameObject.SetActive(visible);
+            }
+        }
     }
 
     private void RefreshShipPlanetCandidates()
     {
-        PlanetSelectionState.ClearLastSelection();
+        PlanetSelectionState.Clear();
 
         if (selectionBootstrapper == null)
         {

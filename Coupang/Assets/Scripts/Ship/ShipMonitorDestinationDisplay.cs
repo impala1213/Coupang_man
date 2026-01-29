@@ -97,6 +97,12 @@ public class ShipMonitorDestinationDisplay : MonoBehaviour
 
         if (!hasSelection || (!showEvenIfNotConfirmed && !isConfirmed))
         {
+            if (!showEvenIfNotConfirmed && PlanetSelectionState.HasLastSelection)
+            {
+                ApplyOffer(PlanetSelectionState.GetLastSelection());
+                return;
+            }
+
             if (destinationText != null) destinationText.text = noSelectionDestinationLabel;
             EnsureCargoIcons(null);
             EnsureDangerIcons(0);

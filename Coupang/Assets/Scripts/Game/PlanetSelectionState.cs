@@ -65,6 +65,23 @@ public static class PlanetSelectionState
 
     public static Offer GetLastSelection() => s_lastSelection;
 
+    public static bool TryGetSelection(out Offer offer)
+    {
+        offer = default;
+        if (!HasSelection)
+            return false;
+
+        offer = s_candidates[s_selectedIndex];
+        return offer.IsValid;
+    }
+
+    public static void RememberSelection(Offer offer)
+    {
+        s_lastSelection = offer;
+        s_hasLastSelection = offer.IsValid;
+        RaiseChanged();
+    }
+
     public static Offer GetCandidate(int index)
     {
         if (s_candidates == null || index < 0 || index >= s_candidates.Length)
