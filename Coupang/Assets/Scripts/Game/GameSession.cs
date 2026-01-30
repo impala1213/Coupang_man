@@ -210,7 +210,13 @@ public class GameSession : MonoBehaviour
                 pendingSnapshot = CaptureSnapshot(activeStageContainer, gameplayScene);
             }
 
-            StartCoroutine(ReturnToShipRoutine());
+                        // Multi-destination payout summary (recorded per terminal completion).
+            if (DestinationAssignmentState.HasAssignment)
+            {
+                Debug.Log(DestinationAssignmentState.BuildTripSummaryText());
+            }
+
+StartCoroutine(ReturnToShipRoutine());
         }
     }
 
@@ -713,33 +719,11 @@ snap.valid = true;
         destCount = Mathf.Max(1, destCount);
         if (destCount <= 1 || prefab == null) return;
 
-        // Build total required units per category from the contract.
-        Dictionary<ItemCategory, int> totals = new Dictionary<ItemCategory, int>(8);
-        ContractCargoCategoryUtil.BuildCategoryCounts(activeContract, totals);
-
-        // Split totals into per-destination quotas (even split per category).
-        List<Dictionary<ItemCategory, int>> perDest = new List<Dictionary<ItemCategory, int>>(destCount);
-        for (int i = 0; i < destCount; i++)
-            perDest.Add(new Dictionary<ItemCategory, int>(8));
-
-        foreach (var kv in totals)
+        // Use the pre-split assignment prepared on the ship monitor.
+        // Fallback: if not prepared (or mismatched count), prepare now (will randomize).
+        if (!DestinationAssignmentState.Matches(activeContract, destCount))
         {
-            ItemCategory cat = kv.Key;
-            int total = Mathf.Max(0, kv.Value);
-            if (total <= 0) continue;
-
-            int baseQty = total / destCount;
-            int rem = total % destCount;
-
-            for (int i = 0; i < destCount; i++)
-            {
-                int q = baseQty + ((i < rem) ? 1 : 0);
-                if (q <= 0) continue;
-
-                var map = perDest[i];
-                if (map.ContainsKey(cat)) map[cat] += q;
-                else map.Add(cat, q);
-            }
+            DestinationAssignmentState.Prepare(activeContract, destCount);
         }
 
         // Candidate anchors (if authored)
@@ -771,6 +755,12 @@ snap.valid = true;
             ? activeStageContainer.containerRoot
             : (activeStageContainer != null ? activeStageContainer.transform : null);
 
+        if (containerFrame == null)
+        {
+            Debug.LogWarning("[GameSession] Multi-destination spawn: activeStageContainer missing; using playerRoot as center.");
+            containerFrame = (playerRoot != null) ? playerRoot.transform : null;
+        }
+
         // StageContext overrides (if present) -> GameSession fallback (same as single DZ)
         float minDist = (activeStageContext != null && activeStageContext.dropZoneMinDistanceFromLanding > 0f)
             ? activeStageContext.dropZoneMinDistanceFromLanding
@@ -796,94 +786,88 @@ snap.valid = true;
             ? activeStageContext.dropZoneGroundMask
             : dropZoneGroundMask;
 
-        float ringRadius = Mathf.Clamp((minDist + maxDist) * 0.5f, minDist, maxDist);
-        float angleStep = 360f / Mathf.Max(1, destCount);
-
+        // Spawn N drop zones
         for (int i = 0; i < destCount; i++)
         {
-            DeliveryDropZone dz = null;
+            // 1) Decide pose
+            Vector3 spawnPos;
+            Quaternion spawnRot;
 
-            // 1) Use authored candidate (unique) if available.
-            Transform cand = (candidates != null && i < candidates.Count) ? candidates[i] : null;
-            if (cand != null)
+            bool gotPose = false;
+
+            // Candidate anchor per destination (if available)
+            if (candidates != null && i < candidates.Count && candidates[i] != null)
             {
-                var existing = cand.GetComponentInChildren<DeliveryDropZone>(true);
-                if (existing != null && existing.gameObject.scene == gameplayScene)
+                var t = candidates[i];
+                spawnPos = t.position;
+                spawnRot = t.rotation;
+
+                // Snap to ground under the candidate
+                Vector3 origin = spawnPos + Vector3.up * above;
+                if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, dist, groundMask, QueryTriggerInteraction.Ignore))
                 {
-                    ConfigureDropZone(existing, bindRadarGoal: false);
-                    dz = existing;
+                    spawnPos = hit.point;
+                    // keep candidate rotation (designer intent)
                 }
-                else
-                {
-                    dz = CreateDropZoneAt(cand.position, cand.rotation, prefab, bindRadarGoal: false);
-                }
+
+                gotPose = true;
             }
             else
             {
-                // 2) Fallback: ring placement around container.
-                Vector3 spawnPos = Vector3.zero;
-                Quaternion spawnRot = Quaternion.identity;
-                bool found = false;
+                gotPose = TryFindDropZonePose(
+                    containerFrame.position,
+                    minDist,
+                    maxDist,
+                    attempts,
+                    above,
+                    dist,
+                    groundMask,
+                    out spawnPos,
+                    out spawnRot);
 
-                if (containerFrame != null)
+                if (!gotPose)
                 {
-                    Vector3 baseForward = Vector3.ProjectOnPlane(containerFrame.forward, Vector3.up);
-                    if (baseForward.sqrMagnitude < 0.0001f)
-                        baseForward = Vector3.forward;
-
-                    float ang = i * angleStep;
-                    Vector3 dir = Quaternion.AngleAxis(ang, Vector3.up) * baseForward.normalized;
-                    Vector3 guess = containerFrame.position + dir * ringRadius;
-
-                    Vector3 rayStart = guess + Vector3.up * above;
-                    if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, dist, groundMask, QueryTriggerInteraction.Ignore))
-                    {
-                        spawnPos = hit.point;
-
-                        Vector3 fwd = Vector3.ProjectOnPlane(dir, hit.normal);
-                        if (fwd.sqrMagnitude < 0.0001f)
-                            fwd = Vector3.ProjectOnPlane(containerFrame.forward, hit.normal);
-
-                        spawnRot = Quaternion.LookRotation(fwd.normalized, hit.normal);
-                        found = true;
-                    }
-                    else
-                    {
-                        // Last resort: reuse random-placement helper
-                        found = TryFindDropZonePose(containerFrame.position, minDist, maxDist, attempts, above, dist, groundMask, out spawnPos, out spawnRot);
-                    }
+                    spawnPos = containerFrame.position + containerFrame.forward * minDist;
+                    spawnRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(containerFrame.forward, Vector3.up), Vector3.up);
+                    gotPose = true;
                 }
-
-                if (!found)
-                {
-                    if (containerFrame != null)
-                    {
-                        spawnPos = containerFrame.position + containerFrame.forward * minDist;
-                        spawnRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(containerFrame.forward, Vector3.up), Vector3.up);
-                    }
-                }
-
-                dz = CreateDropZoneAt(spawnPos, spawnRot, prefab, bindRadarGoal: false);
             }
 
-            if (dz == null) continue;
+            // 2) Instantiate
+            var contractPart = DestinationAssignmentState.GetPartialContract(i);
+            if (contractPart == null)
+                contractPart = activeContract;
 
-            // Configure assignment on the Destination terminal under this DropZone.
+            var dz = Instantiate(prefab, spawnPos, spawnRot);
+            dz.name = $"{prefab.name}_Dest{i + 1}";
+            SceneManager.MoveGameObjectToScene(dz.gameObject, gameplayScene);
+
+            // Configure using the per-destination partial contract
+            ConfigureDropZone(dz, bindRadarGoal: (i == 0), contractOverride: contractPart);
+
+            // Configure the terminal UI assignment
             var term = dz.GetComponentInChildren<DestinationTerminalInteractable>(true);
             if (term != null)
             {
-                term.ConfigureAssignment(perDest[i]);
+                term.dropZone = dz;
+                term.ConfigureAssignment(contractPart, i);
                 if (!activeDestinations.Contains(term))
                     activeDestinations.Add(term);
             }
             else
             {
-                Debug.LogWarning($"[GameSession] Multi-destination DropZone '{dz.name}' has no DestinationTerminalInteractable in children. Add it under the Destination terminal object.");
+                Debug.LogWarning($"[GameSession] Multi-destination DropZone '{dz.name}' has no DestinationTerminalInteractable.");
             }
+
+            if (activeDropZone == null)
+                activeDropZone = dz;
+
+            if (!activeDropZones.Contains(dz))
+                activeDropZones.Add(dz);
         }
 
-        // Let the registry choose the nearest incomplete destination as radar goal.
-        DestinationGoalRegistry.UpdateGoal();
+        // Let the registry pick the first goal target if needed.
+        DestinationGoalRegistry.NotifyDestinationsSpawned();
     }
 
 
@@ -920,7 +904,7 @@ snap.valid = true;
         return dz;
     }
 
-    private void ConfigureDropZone(DeliveryDropZone dz, bool bindRadarGoal)
+    private void ConfigureDropZone(DeliveryDropZone dz, bool bindRadarGoal, DeliveryContractDefinition contractOverride = null)
     {
         if (dz == null) return;
 
@@ -942,7 +926,8 @@ snap.valid = true;
             : defaultShieldRadius;
 
         // Configure DropZone with the active contract (mission payout = sum(baseValue)).
-        dz.Configure(activeContract, wallet, shieldPrefab, radius);
+        var contractToUse = contractOverride != null ? contractOverride : activeContract;
+        dz.Configure(contractToUse, wallet, shieldPrefab, radius);
 
         // Bind contract to activation buttons (optional)
         var buttons = dz.GetComponentsInChildren<DeliveryActivationButton>(true);
@@ -951,7 +936,7 @@ snap.valid = true;
             for (int i = 0; i < buttons.Length; i++)
             {
                 if (buttons[i] != null)
-                    buttons[i].BindContract(activeContract);
+                    buttons[i].BindContract(contractToUse);
             }
         }
 
@@ -1236,6 +1221,7 @@ snap.valid = true;
 
         return false;
     }
+
 
     private static Vector2 RandomUnitCircleDirection()
     {

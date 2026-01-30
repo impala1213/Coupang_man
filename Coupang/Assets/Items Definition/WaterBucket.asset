@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7395f9277412cb46a1113607054f0e0, type: 3}
+  m_Name: WaterBucket
+  m_EditorClassIdentifier: 
+  itemId: 
+  displayName: WaterBucket
+  icon: {fileID: 0}
+  category: 1
+  isCarrier: 0
+  carryKind: 1
+  slotSize: 1
+  weight: 18
+  stackSize: {x: 0.4, y: 0.4, z: 0.3}
+  stackVisualPrefab: {fileID: 0}
+  stackColor: {r: 0.7, g: 0.7, b: 0.7, a: 1}
+  carrierLocalPosition: {x: 0, y: 0, z: 0}
+  carrierLocalEuler: {x: 0, y: 0, z: 0}
+  carrierLocalScale: {x: 1, y: 1, z: 1}
+  worldPrefab: {fileID: 1879355773066183258, guid: 4ed1d06fceaf0ae48a26cb0d3fb06c72, type: 3}
+  breakable: 1
+  breakImpulseThreshold: 15
+  brokenPrefab: {fileID: 0}
+  baseValue: 30
