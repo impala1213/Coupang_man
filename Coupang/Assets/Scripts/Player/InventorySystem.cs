@@ -177,6 +177,10 @@ public class InventorySystem : MonoBehaviour
             return false;
         }
 
+        // Items sealed by completed drop zones cannot be picked up
+        if (worldItem.pickupLocked)
+            return false;
+
         var def = worldItem.definition;
         ContractCargoMarker cargoMarker = worldItem.GetComponent<ContractCargoMarker>();
         bool shouldNotifyContractPickup = cargoMarker != null && !cargoMarker.WasPicked;
@@ -297,6 +301,160 @@ public class InventorySystem : MonoBehaviour
         ClearStackFromSlots(head);
         NotifyChanged();
         return true;
+    }
+
+    // 
+    // Knockback / Impact spill
+    // 
+    /// <summary>
+    /// Spills ALL inventory items into the world with an initial velocity.
+    /// Used when the player gets knocked down so the inventory "explodes" out.
+    /// Returns the number of physical items dropped/spawned.
+    /// </summary>
+    public int SpillAllToWorld(Transform dropOrigin, Vector3 forward, Transform throwerRoot = null)
+    {
+        EnsureSlots();
+
+        // Flatten direction (yaw only)
+        Vector3 f = forward;
+        f.y = 0f;
+        if (f.sqrMagnitude < 0.0001f)
+            f = transform.forward;
+        f.y = 0f;
+        if (f.sqrMagnitude > 0.0001f) f.Normalize();
+        else f = Vector3.forward;
+
+        Vector3 basePos = dropOrigin
+            ? dropOrigin.position
+            : (transform.position + transform.forward * 0.6f + Vector3.up * 0.5f);
+
+        Transform thrower = throwerRoot != null ? throwerRoot : transform.root;
+
+        // Tuning (kept internal so you can tweak later)
+        const float minSpeed = 7f;
+        const float maxSpeed = 14f;
+        const float minUp = 1.2f;
+        const float maxUp = 3.8f;
+        const float yawSpread = 40f;
+        const float posJitter = 0.12f;
+        const float spinMin = 1.5f;
+        const float spinMax = 8f;
+        const float carrierThrowSpeed = 6f;
+
+        var uniqueStacks = new HashSet<ItemStackData>();
+        int dropped = 0;
+
+        // Iterate current stacks (unique heads)
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var head = slots[i].stack;
+            if (head == null || head.def == null) continue;
+            if (!uniqueStacks.Add(head)) continue;
+
+            ItemDefinition def = head.def;
+
+            // Carrier item: drop the actual carrier object if we have it.
+            if (def.isCarrier)
+            {
+                if (carrier != null)
+                {
+                    // Make sure carrier can be container-parented again once dropped
+                    var carrierWI = carrier.GetComponent<WorldItem>();
+                    if (carrierWI) carrierWI.ignoreContainerAutoParent = false;
+
+                    // Spill anything mounted on the carrier first
+                    if (carrier.HasAnyMounted())
+                        carrier.SpillAllOnCarrierDrop(basePos + Vector3.up * 0.2f, f);
+
+                    // Drop carrier frame itself
+                    Vector3 cPos = basePos + UnityEngine.Random.insideUnitSphere * 0.08f + Vector3.up * 0.15f;
+                    carrier.DropAsBundle(cPos, f);
+
+                    // Give it a little kick so it also "flies" away
+                    var crb = carrier.GetComponent<Rigidbody>();
+                    if (crb)
+                        crb.linearVelocity = f * carrierThrowSpeed + Vector3.up * 1.2f;
+
+                    carrier = null;
+                    dropped++;
+                }
+                else
+                {
+                    // Fallback: if carrier ref missing, just spawn prefab like a normal item.
+                    if (def.worldPrefab)
+                    {
+                        Vector3 pos = basePos + UnityEngine.Random.insideUnitSphere * posJitter + Vector3.up * 0.2f;
+                        var go = UnityEngine.Object.Instantiate(def.worldPrefab, pos, Quaternion.identity);
+                        go.name = def.worldPrefab.name;
+
+                        var wi = go.GetComponent<WorldItem>() ?? go.AddComponent<WorldItem>();
+                        wi.definition = def;
+                        if (head.durCurrent >= 0 || head.durMax > 0)
+                            wi.ApplyDurability(head.durCurrent, head.durMax, true);
+
+                        Vector3 dir = Quaternion.AngleAxis(UnityEngine.Random.Range(-yawSpread, yawSpread), Vector3.up) * f;
+                        float speed = UnityEngine.Random.Range(minSpeed, maxSpeed);
+                        float up = UnityEngine.Random.Range(minUp, maxUp);
+                        Vector3 vel = dir.normalized * speed + Vector3.up * up;
+
+                        wi.ArmIgnoreBreakForThrower(thrower, 0.25f);
+                        wi.OnDropped(pos, vel);
+
+                        if (!wi.rb) wi.rb = wi.GetComponent<Rigidbody>();
+                        if (wi.rb) wi.rb.angularVelocity = UnityEngine.Random.onUnitSphere * UnityEngine.Random.Range(spinMin, spinMax);
+
+                        dropped++;
+                    }
+                }
+
+                // Remove carrier stack from slots
+                ClearStackFromSlots(head);
+                continue;
+            }
+
+            // Normal inventory item
+            if (def.worldPrefab)
+            {
+                Vector3 pos = basePos + UnityEngine.Random.insideUnitSphere * posJitter + Vector3.up * 0.2f;
+                var go = UnityEngine.Object.Instantiate(def.worldPrefab, pos, Quaternion.identity);
+                go.name = def.worldPrefab.name;
+
+                var wi = go.GetComponent<WorldItem>() ?? go.AddComponent<WorldItem>();
+                wi.definition = def;
+
+                if (head.durCurrent >= 0 || head.durMax > 0)
+                    wi.ApplyDurability(head.durCurrent, head.durMax, true);
+
+                Vector3 dir = Quaternion.AngleAxis(UnityEngine.Random.Range(-yawSpread, yawSpread), Vector3.up) * f;
+                float speed = UnityEngine.Random.Range(minSpeed, maxSpeed);
+                float up = UnityEngine.Random.Range(minUp, maxUp);
+                Vector3 vel = dir.normalized * speed + Vector3.up * up;
+
+                wi.ArmIgnoreBreakForThrower(thrower, 0.25f);
+                wi.OnDropped(pos, vel);
+
+                if (!wi.rb) wi.rb = wi.GetComponent<Rigidbody>();
+                if (wi.rb) wi.rb.angularVelocity = UnityEngine.Random.onUnitSphere * UnityEngine.Random.Range(spinMin, spinMax);
+
+                dropped++;
+            }
+            else
+            {
+                Debug.LogWarning($"[InventorySystem] SpillAllToWorld: '{def.displayName}' has no worldPrefab. Clearing anyway.");
+            }
+
+            // Clear stack regardless (knockdown loses inventory)
+            ClearStackFromSlots(head);
+        }
+
+        activeIndex = Mathf.Clamp(activeIndex, 0, slotCount - 1);
+
+        // Refresh held visual + UI once
+        DestroyHeldVisual();
+        RefreshHeldVisual();
+        OnInventoryChanged?.Invoke();
+
+        return dropped;
     }
 
     // ─────────────────────────────────────────────

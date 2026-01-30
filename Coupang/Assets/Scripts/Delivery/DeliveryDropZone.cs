@@ -237,6 +237,306 @@ public class DeliveryDropZone : MonoBehaviour
         return Mathf.Max(0, total);
     }
 
+    
+
+    /// <summary>
+    /// Computes reward using per-category quotas.
+    /// Rule:
+    /// - For each category quota, pays for up to that many units (stackCount) present in the zone.
+    /// - If more units are present than quota, pays the most expensive items first (by ItemDefinition.baseValue).
+    /// - Items must still satisfy IsValidDeliverItem (contract filtering, durability, etc.).
+    /// </summary>
+    public int ComputeRewardByCategoryQuotas(IReadOnlyDictionary<ItemCategory, int> quotaByCategory, bool mostExpensiveFirst = true, DeliveryPricingTable pricingTable = null)
+    {
+        CleanupDeadRefs();
+
+        if (quotaByCategory == null || quotaByCategory.Count == 0)
+            return 0;
+
+        // Build valid item list snapshot
+        List<WorldItem> valid = new List<WorldItem>(_items.Count);
+        foreach (var wi in _items)
+        {
+            if (IsValidDeliverItem(wi))
+                valid.Add(wi);
+        }
+
+        long reward = 0;
+
+        // Group by category
+        Dictionary<ItemCategory, List<WorldItem>> byCat = new Dictionary<ItemCategory, List<WorldItem>>(8);
+        for (int i = 0; i < valid.Count; i++)
+        {
+            var wi = valid[i];
+            var def = wi.definition;
+            if (def == null) continue;
+
+            var cat = def.category;
+            if (!byCat.TryGetValue(cat, out var list))
+            {
+                list = new List<WorldItem>(8);
+                byCat.Add(cat, list);
+            }
+            list.Add(wi);
+        }
+
+        foreach (var kv in quotaByCategory)
+        {
+            ItemCategory cat = kv.Key;
+            int quota = Mathf.Max(0, kv.Value);
+            if (quota <= 0) continue;
+
+            if (!byCat.TryGetValue(cat, out var list) || list == null || list.Count == 0)
+                continue;
+
+            if (mostExpensiveFirst)
+            {
+                list.Sort((a, b) =>
+                {
+                    int av = (a != null && a.definition != null) ? a.definition.baseValue : 0;
+                    int bv = (b != null && b.definition != null) ? b.definition.baseValue : 0;
+                    return bv.CompareTo(av); // descending
+                });
+            }
+
+            int remaining = quota;
+            for (int i = 0; i < list.Count && remaining > 0; i++)
+            {
+                var wi = list[i];
+                if (!IsValidDeliverItem(wi)) continue;
+
+                var def = wi.definition;
+                if (def == null) continue;
+
+                int value = Mathf.Max(0, def.baseValue);
+                if (pricingTable != null)
+                {
+                    float mul = Mathf.Max(0f, pricingTable.GetMultiplier(def.category));
+                    value = Mathf.RoundToInt(value * mul);
+                }
+
+                int stack = Mathf.Max(1, wi.stackCount);
+                int take = Mathf.Min(stack, remaining);
+
+                reward += (long)take * value;
+                remaining -= take;
+            }
+        }
+
+        if (reward > int.MaxValue) return int.MaxValue;
+        return (int)Mathf.Max(0, reward);
+    }
+
+    /// <summary>
+    /// Counts units (stackCount) currently inside the zone per category.
+    /// Only counts items that satisfy IsValidDeliverItem.
+    /// </summary>
+    public void GetDeliveredUnitsByCategory(Dictionary<ItemCategory, int> outCounts)
+    {
+        if (outCounts == null) return;
+        outCounts.Clear();
+
+        CleanupDeadRefs();
+
+        foreach (var wi in _items)
+        {
+            if (!IsValidDeliverItem(wi))
+                continue;
+
+            var def = wi.definition;
+            if (def == null) continue;
+
+            int stack = Mathf.Max(1, wi.stackCount);
+            if (!outCounts.ContainsKey(def.category))
+                outCounts.Add(def.category, stack);
+            else
+                outCounts[def.category] += stack;
+        }
+    }
+
+    
+    /// <summary>
+    /// Writes current delivered unit counts per ItemDefinition into outCounts.
+    /// Only counts items that satisfy IsValidDeliverItem.
+    /// </summary>
+    public void GetDeliveredUnitsByDefinition(Dictionary<ItemDefinition, int> outCounts)
+    {
+        if (outCounts == null) return;
+        outCounts.Clear();
+
+        CleanupDeadRefs();
+
+        foreach (var wi in _items)
+        {
+            if (!IsValidDeliverItem(wi))
+                continue;
+
+            var def = wi.definition;
+            if (def == null) continue;
+
+            int stack = Mathf.Max(1, wi.stackCount);
+
+            if (!outCounts.ContainsKey(def))
+                outCounts.Add(def, stack);
+            else
+                outCounts[def] += stack;
+        }
+    }
+
+    /// <summary>
+    /// Activates the zone using per-item-definition quotas and spawns the shield.
+    /// This is used by multi-destination terminals with per-destination "partial contracts".
+    /// </summary>
+    public bool TryActivateByDefinitionQuotas(IReadOnlyDictionary<ItemDefinition, int> quotaByDefinition, int minUnitsRequired = 0, DeliveryPricingTable pricingTable = null)
+    {
+        if (IsActivated)
+            return false;
+
+        CleanupDeadRefs();
+
+        // count valid units (stackCount)
+        int units = 0;
+        foreach (var wi in _items)
+        {
+            if (!IsValidDeliverItem(wi))
+                continue;
+
+            units += Mathf.Max(1, wi.stackCount);
+        }
+
+        if (units < Mathf.Max(0, minUnitsRequired))
+        {
+            if (debugLog)
+                Debug.Log($"[DeliveryDropZone] ActivateByDefinition failed: units={units}, min={minUnitsRequired}");
+            return false;
+        }
+
+        int reward = ComputeRewardByDefinitionQuotas(quotaByDefinition, pricingTable);
+
+        if (wallet != null && reward != 0)
+            wallet.AddMoney(reward);
+
+        // Stop tracking immediately
+        IsActivated = true;
+
+        // Snapshot items currently inside before clearing
+        var snapshot = new System.Collections.Generic.List<WorldItem>(_items);
+        _items.Clear();
+
+        var shieldInstance = SpawnShield(); // (spawned via helper)
+        SealItemsAfterDelivery(snapshot, shieldInstance);
+
+        LastReward = reward;
+        OnActivated?.Invoke(reward);
+        return true;
+    }
+
+    private int ComputeRewardByDefinitionQuotas(IReadOnlyDictionary<ItemDefinition, int> quotaByDefinition, DeliveryPricingTable pricingTable)
+    {
+        if (quotaByDefinition == null || quotaByDefinition.Count == 0)
+            return 0;
+
+        // Build delivered counts
+        Dictionary<ItemDefinition, int> delivered = new Dictionary<ItemDefinition, int>(quotaByDefinition.Count);
+        GetDeliveredUnitsByDefinition(delivered);
+
+        long sum = 0;
+        foreach (var kv in quotaByDefinition)
+        {
+            var def = kv.Key;
+            if (def == null) continue;
+
+            int req = Mathf.Max(0, kv.Value);
+            if (req <= 0) continue;
+
+            int got = delivered.TryGetValue(def, out int g) ? Mathf.Max(0, g) : 0;
+            int payUnits = Mathf.Min(req, got);
+            if (payUnits <= 0) continue;
+
+            int unitValue = def.baseValue;
+            if (pricingTable != null)
+                unitValue = pricingTable.Evaluate(def, 1);
+
+            unitValue = Mathf.Max(0, unitValue);
+            sum += (long)payUnits * unitValue;
+            if (sum > int.MaxValue) return int.MaxValue;
+        }
+
+        return (int)Mathf.Max(0, sum);
+    }
+
+/// <summary>
+    /// Activates the zone using per-category quotas and spawns the shield.
+    /// This is used by multi-destination terminals.
+    /// </summary>
+    public bool TryActivateByCategoryQuotas(IReadOnlyDictionary<ItemCategory, int> quotaByCategory, int minUnitsRequired = 0, bool mostExpensiveFirst = true, DeliveryPricingTable pricingTable = null)
+    {
+        if (IsActivated)
+            return false;
+
+        CleanupDeadRefs();
+
+        // count valid units (stackCount)
+        int units = 0;
+        foreach (var wi in _items)
+        {
+            if (!IsValidDeliverItem(wi))
+                continue;
+
+            units += Mathf.Max(1, wi.stackCount);
+        }
+
+        if (units < Mathf.Max(0, minUnitsRequired))
+        {
+            if (debugLog)
+                Debug.Log($"[DeliveryDropZone] ActivateByCategory failed: units={units}, min={minUnitsRequired}");
+            return false;
+        }
+
+        int reward = ComputeRewardByCategoryQuotas(quotaByCategory, mostExpensiveFirst, pricingTable);
+
+        if (wallet != null && reward != 0)
+            wallet.AddMoney(reward);
+
+        // Stop tracking immediately
+        IsActivated = true;
+
+        // Snapshot items currently inside before clearing
+        var snapshot = new System.Collections.Generic.List<WorldItem>(_items);
+        _items.Clear();
+
+        var shieldInstance = SpawnShield(); // (spawned via helper)
+        SealItemsAfterDelivery(snapshot, shieldInstance);
+
+        LastReward = reward;
+        OnActivated?.Invoke(reward);
+        return true;
+    }
+
+    /// <summary>
+    /// After delivery is completed and the shield is spawned, lock items inside the shield so they cannot be picked up again.
+    /// This prevents reclaiming delivered items.
+    /// </summary>
+    private void SealItemsAfterDelivery(System.Collections.Generic.List<WorldItem> snapshot, GameObject shieldInstance)
+    {
+        if (snapshot == null || snapshot.Count == 0) return;
+
+        Vector3 center = (shieldInstance != null) ? shieldInstance.transform.position : (shieldSpawnRoot != null ? shieldSpawnRoot.position : transform.position);
+        float r = Mathf.Max(0.1f, shieldRadius);
+        float r2 = (r + 0.15f) * (r + 0.15f);
+
+        for (int i = 0; i < snapshot.Count; i++)
+        {
+            var wi = snapshot[i];
+            if (wi == null) continue;
+
+            Vector3 p = wi.transform.position;
+            if ((p - center).sqrMagnitude > r2) continue;
+
+            wi.SetPickupLocked(true);
+        }
+    }
+
     public bool TryActivate(int minItemsRequired)
     {
         if (IsActivated)
@@ -257,20 +557,24 @@ public class DeliveryDropZone : MonoBehaviour
         if (wallet != null && reward != 0)
             wallet.AddMoney(reward);
 
-        // Do NOT destroy delivered items (removed when planet scene unloads).
+        // Stop tracking immediately
+        IsActivated = true;
+
+        // Snapshot items currently inside before clearing
+        var snapshot = new System.Collections.Generic.List<WorldItem>(_items);
         _items.Clear();
 
-        SpawnShield();
+        var shieldInstance = SpawnShield(); // (spawned via helper)
+        SealItemsAfterDelivery(snapshot, shieldInstance);
 
-        IsActivated = true;
         LastReward = reward;
         OnActivated?.Invoke(reward);
         return true;
     }
 
-    private void SpawnShield()
+    private GameObject SpawnShield()
     {
-        if (shieldPrefab == null) return;
+        if (shieldPrefab == null) return null;
 
         Transform root = shieldSpawnRoot != null ? shieldSpawnRoot : transform;
 
@@ -288,6 +592,8 @@ public class DeliveryDropZone : MonoBehaviour
             // Fallback: scale the object roughly by radius
             go.transform.localScale = Vector3.one * (shieldRadius * 2f);
         }
+
+        return go;
     }
 
     private void CleanupDeadRefs()

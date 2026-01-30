@@ -8,7 +8,8 @@ using UnityEngine.UI;
 /// - RadarBG and RotateContainer rotate together.
 /// - FovWedge is never modified by this script (must stay visually fixed).
 /// - Blips (items/enemies) are shown only if within range AND within viewAngle.
-/// - Goal is always shown; if out of range it is clamped to the outer ring.
+/// - Goals: supports multiple registered goals (e.g., multi DropZones).
+///   If registry is empty, falls back to goalTarget.
 /// - XZ plane only.
 /// </summary>
 [DisallowMultipleComponent]
@@ -49,6 +50,7 @@ public class PlayerRadarUI : MonoBehaviour
     public float edgePadding = 6f;
 
     [Header("Targets")]
+    [Tooltip("Fallback single goal target when no registry goals exist.")]
     public Transform goalTarget;
 
     [Tooltip("Monsters: colliders in this LayerMask.")]
@@ -74,21 +76,28 @@ public class PlayerRadarUI : MonoBehaviour
     public Color blipColor = Color.cyan;
     public Color goalColor = Color.yellow;
 
-[Header("Icon Size")]
-[Tooltip("Scale multiplier for the goal icon. 1 = prefab's default size.")]
-[Min(0.1f)] public float goalIconScale = 1.6f;
+    [Header("Icon Size")]
+    [Tooltip("Scale multiplier for the goal icon. 1 = prefab's default size.")]
+    [Min(0.1f)] public float goalIconScale = 1.6f;
 
-[Tooltip("Scale multiplier for blip icons. 1 = prefab's default size.")]
-[Min(0.1f)] public float blipIconScale = 1.0f;
+    [Tooltip("Scale multiplier for blip icons. 1 = prefab's default size.")]
+    [Min(0.1f)] public float blipIconScale = 1.0f;
 
-[Tooltip("If true, icon scales are additionally multiplied by (radar diameter / referenceRadarDiameter).")]
-public bool autoScaleIconsWithRadar = true;
+    [Tooltip("If true, icon scales are additionally multiplied by (radar diameter / referenceRadarDiameter).")]
+    public bool autoScaleIconsWithRadar = true;
 
-[Tooltip("Radar diameter (in UI pixels) that corresponds to auto scale factor = 1.")]
-[Min(1f)] public float referenceRadarDiameter = 220f;
+    [Tooltip("Radar diameter (in UI pixels) that corresponds to auto scale factor = 1.")]
+    [Min(1f)] public float referenceRadarDiameter = 220f;
 
-[Tooltip("Clamp range for auto scale factor.")]
-public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
+    [Tooltip("Clamp range for auto scale factor.")]
+    public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
+
+    [Header("Goal (Multi)")]
+    [Tooltip("Max number of registered goals (DropZones) to show.")]
+    [Min(1)] public int maxGoalsToShow = 8;
+
+    [Tooltip("When multiple goals are clamped to the edge, spread them along the edge to avoid perfect overlap (pixels).")]
+    [Min(0f)] public float goalEdgeSeparationPx = 10f;
 
     [Header("Performance")]
     [Min(0.02f)]
@@ -106,8 +115,8 @@ public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
     private readonly List<Transform> blipTargets = new List<Transform>(128);
     private readonly List<Image> blipDots = new List<Image>(128);
 
-    private Image goalDot;
-    private RectTransform goalDotRt;
+    private readonly List<Image> goalDots = new List<Image>(16);
+    private readonly List<Transform> goalOrder = new List<Transform>(16);
 
     private readonly Collider[] hitsA = new Collider[128];
     private readonly Collider[] hitsB = new Collider[128];
@@ -120,14 +129,12 @@ public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
     {
         AutoBind();
         jammed = startJammed;
-        EnsureGoalDot();
         ForceRefresh();
     }
 
     void OnEnable()
     {
         AutoBind();
-        EnsureGoalDot();
         ForceRefresh();
     }
 
@@ -144,9 +151,11 @@ public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
         {
             nextScanTime = Time.unscaledTime + scanInterval;
             ScanTargets();
+            // clean up any unloaded goals at low frequency
+            RadarGoalRegistry.CleanupNulls();
         }
 
-        UpdateGoalDot();
+        UpdateGoalDots();
 
         if (!jammed)
             UpdateBlips();
@@ -160,13 +169,14 @@ public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
         UpdateIconScalesIfNeeded();
         RotateRadarContent();
         ScanTargets();
-        UpdateGoalDot();
+        RadarGoalRegistry.CleanupNulls();
+        UpdateGoalDots();
         UpdateBlips();
     }
 
     /// <summary>
     /// Optional hook (e.g., SendMessage from jammer enemy).
-    /// When jammed, blips are hidden but goal remains visible.
+    /// When jammed, blips are hidden but goals remain visible.
     /// </summary>
     public void SetRadarJammed(bool value)
     {
@@ -202,7 +212,7 @@ public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
         Vector3 fwd = GetPlayerForwardXZ();
         if (fwd.sqrMagnitude < 0.0001f) return;
 
-        // World north is + interese +Z. yaw: 0 when facing north, +90 when facing east.
+        // World north is +Z. yaw: 0 when facing north, +90 when facing east.
         float yaw = Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg;
 
         float sign = invertRotation ? -1f : 1f;
@@ -215,8 +225,6 @@ public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
         if (radarBG) radarBG.localRotation = rot;
 
         // IMPORTANT: FovWedge is not touched here at all.
-        // Keep it visually fixed by NOT putting it under a rotating parent,
-        // or by managing sibling order if it's getting covered.
     }
 
     private Vector3 GetPlayerForwardXZ()
@@ -280,59 +288,93 @@ public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
         }
     }
 
-    // ---------------- Dot placement ----------------
+    // ---------------- Goal placement (Multi) ----------------
 
-    private void EnsureGoalDot()
+    private void UpdateGoalDots()
     {
-        if (goalDot) return;
-        if (!dotPrefab || !iconsRoot) return;
+        if (!player) return;
 
-        var go = Instantiate(dotPrefab, iconsRoot, false);
-        go.name = "GoalDot";
+        goalOrder.Clear();
 
-        goalDot = go.GetComponent<Image>();
-        goalDotRt = go.GetComponent<RectTransform>();
+        // Prefer registry goals
+        var goals = RadarGoalRegistry.Goals;
+        var primary = RadarGoalRegistry.PrimaryGoal;
 
-        if (!goalDot || !goalDotRt)
+        if (primary != null)
+            goalOrder.Add(primary);
+
+        if (goals != null)
         {
-            Destroy(go);
-            return;
+            for (int i = 0; i < goals.Count && goalOrder.Count < maxGoalsToShow; i++)
+            {
+                var g = goals[i];
+                if (!g) continue;
+                if (g == primary) continue;
+                goalOrder.Add(g);
+            }
         }
 
-        SetupDotRect(goalDotRt);
-        ApplyDotVisual(goalDot, DotKind.Goal);
-        ApplyDotScale(goalDotRt, DotKind.Goal);
-        go.SetActive(true);
-    }
+        // Fallback to inspector goalTarget
+        if (goalOrder.Count == 0 && goalTarget != null)
+            goalOrder.Add(goalTarget);
 
-    private void UpdateGoalDot()
-    {
-        if (!goalDot || !goalDotRt || !player) return;
+        int needed = goalOrder.Count;
+        EnsureDotPool(goalDots, needed, DotKind.Goal);
 
-        if (!goalTarget)
-        {
-            goalDot.gameObject.SetActive(false);
-            return;
-        }
-
-        goalDot.gameObject.SetActive(true);
-
-        Vector3 dir = goalTarget.position - player.position;
-        dir.y = 0f;
-
-        float dist = dir.magnitude;
         float radius = GetRadarRadius();
+        float half = (needed - 1) * 0.5f;
 
-        // Place using north-up coords (unrotated). rotateContainer/radarBG handle rotation.
-        Vector2 local = new Vector2(dir.x, dir.z);
-        float mag = local.magnitude;
-        Vector2 dirN = (mag > 0.0001f) ? (local / mag) : Vector2.up;
+        for (int i = 0; i < goalDots.Count; i++)
+        {
+            var img = goalDots[i];
+            if (!img)
+                continue;
 
-        float r = (dist >= range) ? radius : (dist / Mathf.Max(0.001f, range)) * radius;
+            if (i >= needed)
+            {
+                img.gameObject.SetActive(false);
+                continue;
+            }
 
-        Vector2 pos = dirN * r;
-        goalDotRt.anchoredPosition3D = new Vector3(pos.x, pos.y, 0f);
+            var g = goalOrder[i];
+            if (!g)
+            {
+                img.gameObject.SetActive(false);
+                continue;
+            }
+
+            img.gameObject.SetActive(true);
+
+            Vector3 dir = g.position - player.position;
+            dir.y = 0f;
+
+            float dist = dir.magnitude;
+            Vector2 local = new Vector2(dir.x, dir.z);
+            float mag = local.magnitude;
+            Vector2 dirN = (mag > 0.0001f) ? (local / mag) : Vector2.up;
+
+            bool clamped = dist >= range;
+            float r = clamped ? radius : (dist / Mathf.Max(0.001f, range)) * radius;
+
+            Vector2 pos = dirN * r;
+
+            // If clamped and there are multiple goals, spread slightly along the edge tangent.
+            if (clamped && needed > 1 && goalEdgeSeparationPx > 0f)
+            {
+                Vector2 tangent = new Vector2(-dirN.y, dirN.x);
+                float offset = (i - half) * goalEdgeSeparationPx;
+                pos += tangent * offset;
+
+                // keep inside radius
+                if (pos.magnitude > radius)
+                    pos = pos.normalized * radius;
+            }
+
+            img.rectTransform.anchoredPosition3D = new Vector3(pos.x, pos.y, 0f);
+        }
     }
+
+    // ---------------- Blip placement ----------------
 
     private void UpdateBlips()
     {
@@ -409,51 +451,55 @@ public Vector2 autoScaleClamp = new Vector2(0.75f, 2.5f);
         return Mathf.Max(0f, radius - edgePadding);
     }
 
-private float GetAutoScaleFactor()
-{
-    if (!autoScaleIconsWithRadar || !radarRect) return 1f;
-
-    float d = Mathf.Min(radarRect.rect.width, radarRect.rect.height);
-    if (d <= 0.01f) return 1f;
-
-    float f = d / Mathf.Max(1f, referenceRadarDiameter);
-
-    float min = autoScaleClamp.x;
-    float max = autoScaleClamp.y;
-    if (max < min) { float t = min; min = max; max = t; }
-
-    return Mathf.Clamp(f, min, max);
-}
-
-private void ApplyDotScale(RectTransform rt, DotKind kind)
-{
-    if (!rt) return;
-
-    float f = GetAutoScaleFactor();
-    float baseScale = (kind == DotKind.Goal) ? goalIconScale : blipIconScale;
-    float s = Mathf.Max(0.001f, baseScale * f);
-
-    rt.localScale = new Vector3(s, s, 1f);
-}
-
-private void UpdateIconScalesIfNeeded()
-{
-    float f = GetAutoScaleFactor();
-    if (Mathf.Abs(f - lastAutoScaleFactor) < 0.001f)
-        return;
-
-    lastAutoScaleFactor = f;
-
-    if (goalDotRt)
-        ApplyDotScale(goalDotRt, DotKind.Goal);
-
-    for (int i = 0; i < blipDots.Count; i++)
+    private float GetAutoScaleFactor()
     {
-        var img = blipDots[i];
-        if (!img) continue;
-        ApplyDotScale(img.rectTransform, DotKind.Blip);
+        if (!autoScaleIconsWithRadar || !radarRect) return 1f;
+
+        float d = Mathf.Min(radarRect.rect.width, radarRect.rect.height);
+        if (d <= 0.01f) return 1f;
+
+        float f = d / Mathf.Max(1f, referenceRadarDiameter);
+
+        float min = autoScaleClamp.x;
+        float max = autoScaleClamp.y;
+        if (max < min) { float t = min; min = max; max = t; }
+
+        return Mathf.Clamp(f, min, max);
     }
-}
+
+    private void ApplyDotScale(RectTransform rt, DotKind kind)
+    {
+        if (!rt) return;
+
+        float f = GetAutoScaleFactor();
+        float baseScale = (kind == DotKind.Goal) ? goalIconScale : blipIconScale;
+        float s = Mathf.Max(0.001f, baseScale * f);
+
+        rt.localScale = new Vector3(s, s, 1f);
+    }
+
+    private void UpdateIconScalesIfNeeded()
+    {
+        float f = GetAutoScaleFactor();
+        if (Mathf.Abs(f - lastAutoScaleFactor) < 0.001f)
+            return;
+
+        lastAutoScaleFactor = f;
+
+        for (int i = 0; i < goalDots.Count; i++)
+        {
+            var img = goalDots[i];
+            if (!img) continue;
+            ApplyDotScale(img.rectTransform, DotKind.Goal);
+        }
+
+        for (int i = 0; i < blipDots.Count; i++)
+        {
+            var img = blipDots[i];
+            if (!img) continue;
+            ApplyDotScale(img.rectTransform, DotKind.Blip);
+        }
+    }
 
     // ---------------- Pooling ----------------
 
@@ -478,6 +524,13 @@ private void UpdateIconScalesIfNeeded()
 
             go.SetActive(false);
             pool.Add(img);
+        }
+
+        // Make sure pooled objects are under iconsRoot
+        for (int i = 0; i < pool.Count; i++)
+        {
+            if (pool[i] && pool[i].rectTransform.parent != iconsRoot)
+                pool[i].rectTransform.SetParent(iconsRoot, false);
         }
     }
 

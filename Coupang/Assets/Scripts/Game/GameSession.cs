@@ -24,6 +24,9 @@ public class GameSession : MonoBehaviour
     [SerializeField] private DeliveryContractDirectory defaultContractDirectory;
 
     [Header("Delivery Drop Zone (Optional)")]
+    [Tooltip("How many separate destination drop zones to spawn for the active contract. Prototype uses 3.")]
+    [SerializeField] private int destinationSplitCount = 3;
+
     [Tooltip("Fallback drop zone prefab if the StageContext in the gameplay scene does not provide one.")]
     [SerializeField] private DeliveryDropZone defaultDropZonePrefab;
 
@@ -90,6 +93,8 @@ public class GameSession : MonoBehaviour
     private PlanetCatalog.PlanetEntry activePlanet;
     private DeliveryContractDefinition activeContract;
     private DeliveryDropZone activeDropZone;
+    private readonly List<DeliveryDropZone> activeDropZones = new List<DeliveryDropZone>();
+    private readonly List<DestinationTerminalInteractable> activeDestinations = new List<DestinationTerminalInteractable>();
 
     // Cached stage context/container in the loaded gameplay scene.
     private StageContext activeStageContext;
@@ -604,6 +609,21 @@ snap.valid = true;
             return;
         }
 
+        // Multi-destination prototype: split the contract into N destinations (default 3).
+        int destCount = Mathf.Max(1, destinationSplitCount);
+        if (activeStageContext != null && activeStageContext.destinationCountOverride > 0)
+            destCount = Mathf.Max(1, activeStageContext.destinationCountOverride);
+
+        activeDropZones.Clear();
+        activeDestinations.Clear();
+        activeDropZone = null;
+
+        if (destCount > 1)
+        {
+            SpawnMultiDestinationDropZones(destCount, prefab);
+            return;
+        }
+
         // 1) Candidate-based selection (random)
         chosenDropZoneCandidate = PickRandomDropZoneCandidate();
         if (chosenDropZoneCandidate != null)
@@ -612,18 +632,18 @@ snap.valid = true;
             var existing = chosenDropZoneCandidate.GetComponentInChildren<DeliveryDropZone>(true);
             if (existing != null && existing.gameObject.scene == gameplayScene)
             {
-                ConfigureDropZone(existing);
+                ConfigureDropZone(existing, bindRadarGoal: true);
                 return;
             }
 
-            CreateDropZoneAt(chosenDropZoneCandidate.position, chosenDropZoneCandidate.rotation, prefab);
+            CreateDropZoneAt(chosenDropZoneCandidate.position, chosenDropZoneCandidate.rotation, prefab, bindRadarGoal: true);
             return;
         }
 
         // 2) Legacy single-anchor
         if (activeStageContext != null && activeStageContext.dropZoneAnchor != null)
         {
-            CreateDropZoneAt(activeStageContext.dropZoneAnchor.position, activeStageContext.dropZoneAnchor.rotation, prefab);
+            CreateDropZoneAt(activeStageContext.dropZoneAnchor.position, activeStageContext.dropZoneAnchor.rotation, prefab, bindRadarGoal: true);
             return;
         }
 
@@ -680,8 +700,193 @@ snap.valid = true;
             spawnRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(containerFrame.forward, Vector3.up), Vector3.up);
         }
 
-        CreateDropZoneAt(spawnPos, spawnRot, prefab);
+        CreateDropZoneAt(spawnPos, spawnRot, prefab, bindRadarGoal: true);
     }
+
+    /// <summary>
+    /// Prototype: Spawn multiple destination drop zones and split the active contract into per-destination
+    /// category quotas. Each destination has a DestinationTerminalInteractable under its DropZone that
+    /// will pay up to its quota (most expensive items first) and then spawn a shield.
+    /// </summary>
+    private void SpawnMultiDestinationDropZones(int destCount, DeliveryDropZone prefab)
+    {
+        destCount = Mathf.Max(1, destCount);
+        if (destCount <= 1 || prefab == null) return;
+
+        // Build total required units per category from the contract.
+        Dictionary<ItemCategory, int> totals = new Dictionary<ItemCategory, int>(8);
+        ContractCargoCategoryUtil.BuildCategoryCounts(activeContract, totals);
+
+        // Split totals into per-destination quotas (even split per category).
+        List<Dictionary<ItemCategory, int>> perDest = new List<Dictionary<ItemCategory, int>>(destCount);
+        for (int i = 0; i < destCount; i++)
+            perDest.Add(new Dictionary<ItemCategory, int>(8));
+
+        foreach (var kv in totals)
+        {
+            ItemCategory cat = kv.Key;
+            int total = Mathf.Max(0, kv.Value);
+            if (total <= 0) continue;
+
+            int baseQty = total / destCount;
+            int rem = total % destCount;
+
+            for (int i = 0; i < destCount; i++)
+            {
+                int q = baseQty + ((i < rem) ? 1 : 0);
+                if (q <= 0) continue;
+
+                var map = perDest[i];
+                if (map.ContainsKey(cat)) map[cat] += q;
+                else map.Add(cat, q);
+            }
+        }
+
+        // Candidate anchors (if authored)
+        List<Transform> candidates = null;
+        if (activeStageContext != null && activeStageContext.dropZoneCandidates != null && activeStageContext.dropZoneCandidates.Length > 0)
+        {
+            for (int i = 0; i < activeStageContext.dropZoneCandidates.Length; i++)
+            {
+                var t = activeStageContext.dropZoneCandidates[i];
+                if (t == null) continue;
+                if (t.gameObject.scene != gameplayScene) continue;
+
+                if (candidates == null) candidates = new List<Transform>(activeStageContext.dropZoneCandidates.Length);
+                candidates.Add(t);
+            }
+
+            // Shuffle so we get random unique candidates without replacement.
+            if (candidates != null && candidates.Count > 1)
+            {
+                for (int i = candidates.Count - 1; i > 0; i--)
+                {
+                    int j = Random.Range(0, i + 1);
+                    (candidates[i], candidates[j]) = (candidates[j], candidates[i]);
+                }
+            }
+        }
+
+        Transform containerFrame = (activeStageContainer != null && activeStageContainer.containerRoot != null)
+            ? activeStageContainer.containerRoot
+            : (activeStageContainer != null ? activeStageContainer.transform : null);
+
+        // StageContext overrides (if present) -> GameSession fallback (same as single DZ)
+        float minDist = (activeStageContext != null && activeStageContext.dropZoneMinDistanceFromLanding > 0f)
+            ? activeStageContext.dropZoneMinDistanceFromLanding
+            : dropZoneMinDistanceFromLanding;
+
+        float maxDist = (activeStageContext != null && activeStageContext.dropZoneMaxDistanceFromLanding > 0f)
+            ? activeStageContext.dropZoneMaxDistanceFromLanding
+            : dropZoneMaxDistanceFromLanding;
+
+        int attempts = (activeStageContext != null && activeStageContext.dropZonePlacementAttempts > 0)
+            ? activeStageContext.dropZonePlacementAttempts
+            : dropZonePlacementAttempts;
+
+        float above = (activeStageContext != null && activeStageContext.dropZoneRaycastAboveOffset > 0f)
+            ? activeStageContext.dropZoneRaycastAboveOffset
+            : dropZoneRaycastAboveOffset;
+
+        float dist = (activeStageContext != null && activeStageContext.dropZoneRaycastDistance > 0f)
+            ? activeStageContext.dropZoneRaycastDistance
+            : dropZoneRaycastDistance;
+
+        LayerMask groundMask = (activeStageContext != null && activeStageContext.dropZoneGroundMask.value != 0)
+            ? activeStageContext.dropZoneGroundMask
+            : dropZoneGroundMask;
+
+        float ringRadius = Mathf.Clamp((minDist + maxDist) * 0.5f, minDist, maxDist);
+        float angleStep = 360f / Mathf.Max(1, destCount);
+
+        for (int i = 0; i < destCount; i++)
+        {
+            DeliveryDropZone dz = null;
+
+            // 1) Use authored candidate (unique) if available.
+            Transform cand = (candidates != null && i < candidates.Count) ? candidates[i] : null;
+            if (cand != null)
+            {
+                var existing = cand.GetComponentInChildren<DeliveryDropZone>(true);
+                if (existing != null && existing.gameObject.scene == gameplayScene)
+                {
+                    ConfigureDropZone(existing, bindRadarGoal: false);
+                    dz = existing;
+                }
+                else
+                {
+                    dz = CreateDropZoneAt(cand.position, cand.rotation, prefab, bindRadarGoal: false);
+                }
+            }
+            else
+            {
+                // 2) Fallback: ring placement around container.
+                Vector3 spawnPos = Vector3.zero;
+                Quaternion spawnRot = Quaternion.identity;
+                bool found = false;
+
+                if (containerFrame != null)
+                {
+                    Vector3 baseForward = Vector3.ProjectOnPlane(containerFrame.forward, Vector3.up);
+                    if (baseForward.sqrMagnitude < 0.0001f)
+                        baseForward = Vector3.forward;
+
+                    float ang = i * angleStep;
+                    Vector3 dir = Quaternion.AngleAxis(ang, Vector3.up) * baseForward.normalized;
+                    Vector3 guess = containerFrame.position + dir * ringRadius;
+
+                    Vector3 rayStart = guess + Vector3.up * above;
+                    if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, dist, groundMask, QueryTriggerInteraction.Ignore))
+                    {
+                        spawnPos = hit.point;
+
+                        Vector3 fwd = Vector3.ProjectOnPlane(dir, hit.normal);
+                        if (fwd.sqrMagnitude < 0.0001f)
+                            fwd = Vector3.ProjectOnPlane(containerFrame.forward, hit.normal);
+
+                        spawnRot = Quaternion.LookRotation(fwd.normalized, hit.normal);
+                        found = true;
+                    }
+                    else
+                    {
+                        // Last resort: reuse random-placement helper
+                        found = TryFindDropZonePose(containerFrame.position, minDist, maxDist, attempts, above, dist, groundMask, out spawnPos, out spawnRot);
+                    }
+                }
+
+                if (!found)
+                {
+                    if (containerFrame != null)
+                    {
+                        spawnPos = containerFrame.position + containerFrame.forward * minDist;
+                        spawnRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(containerFrame.forward, Vector3.up), Vector3.up);
+                    }
+                }
+
+                dz = CreateDropZoneAt(spawnPos, spawnRot, prefab, bindRadarGoal: false);
+            }
+
+            if (dz == null) continue;
+
+            // Configure assignment on the Destination terminal under this DropZone.
+            var term = dz.GetComponentInChildren<DestinationTerminalInteractable>(true);
+            if (term != null)
+            {
+                term.ConfigureAssignment(perDest[i]);
+                if (!activeDestinations.Contains(term))
+                    activeDestinations.Add(term);
+            }
+            else
+            {
+                Debug.LogWarning($"[GameSession] Multi-destination DropZone '{dz.name}' has no DestinationTerminalInteractable in children. Add it under the Destination terminal object.");
+            }
+        }
+
+        // Let the registry choose the nearest incomplete destination as radar goal.
+        DestinationGoalRegistry.UpdateGoal();
+    }
+
+
 
     private Transform PickRandomDropZoneCandidate()
     {
@@ -707,14 +912,15 @@ snap.valid = true;
         return valid[Random.Range(0, valid.Count)];
     }
 
-    private void CreateDropZoneAt(Vector3 pos, Quaternion rot, DeliveryDropZone prefab)
+    private DeliveryDropZone CreateDropZoneAt(Vector3 pos, Quaternion rot, DeliveryDropZone prefab, bool bindRadarGoal)
     {
         var dz = Instantiate(prefab, pos, rot);
         SceneManager.MoveGameObjectToScene(dz.gameObject, gameplayScene);
-        ConfigureDropZone(dz);
+        ConfigureDropZone(dz, bindRadarGoal);
+        return dz;
     }
 
-    private void ConfigureDropZone(DeliveryDropZone dz)
+    private void ConfigureDropZone(DeliveryDropZone dz, bool bindRadarGoal)
     {
         if (dz == null) return;
 
@@ -749,14 +955,21 @@ snap.valid = true;
             }
         }
 
-        activeDropZone = dz;
+        if (activeDropZone == null)
+            activeDropZone = dz;
+
+        if (!activeDropZones.Contains(dz))
+            activeDropZones.Add(dz);
 
         // Bind radar goal
-        var radar = (playerRoot != null) ? playerRoot.GetComponentInChildren<PlayerRadarUI>(true) : null;
+        if (bindRadarGoal)
+        {
+            var radar = (playerRoot != null) ? playerRoot.GetComponentInChildren<PlayerRadarUI>(true) : null;
         if (radar != null)
         {
             radar.goalTarget = dz.transform;
             radar.ForceRefresh();
+        }
         }
     }
 
@@ -781,7 +994,21 @@ snap.valid = true;
         Vector3 dzPos = (activeDropZone != null) ? activeDropZone.transform.position : Vector3.positiveInfinity;
 
         SpawnEntries(activeStageContext.itemSpawns, activeStageContext.spawnParent, center, forward, dzPos, minFromDZ, minR, maxR, attempts, above, dist, groundMask);
-        SpawnEntries(activeStageContext.monsterSpawns, activeStageContext.spawnParent, center, forward, dzPos, minFromDZ, minR, maxR, attempts, above, dist, groundMask);
+
+        if (activeStageContext.spawnMonstersAroundDestinations && activeDropZones != null && activeDropZones.Count > 0)
+        {
+            float mMinR = Mathf.Max(0f, activeStageContext.monsterSpawnMinDistanceFromDestination);
+            float mMaxR = Mathf.Max(mMinR + 1f, activeStageContext.monsterSpawnMaxDistanceFromDestination);
+            float minSep = Mathf.Max(0f, activeStageContext.monsterSpawnMinSeparation);
+            float minFromOther = Mathf.Max(0f, activeStageContext.monsterSpawnMinDistanceFromOtherDestinations);
+            int mAttempts = (activeStageContext.monsterSpawnPlacementAttempts > 0) ? activeStageContext.monsterSpawnPlacementAttempts : attempts;
+
+            SpawnEntriesAroundDestinations(activeStageContext.monsterSpawns, activeStageContext.spawnParent, activeDropZones, forward, mMinR, mMaxR, minSep, minFromOther, mAttempts, above, dist, groundMask);
+        }
+        else
+        {
+            SpawnEntries(activeStageContext.monsterSpawns, activeStageContext.spawnParent, center, forward, dzPos, minFromDZ, minR, maxR, attempts, above, dist, groundMask);
+        }
     }
 
     private void SpawnEntries(
@@ -828,6 +1055,186 @@ snap.valid = true;
                     go.transform.SetParent(parent, true);
             }
         }
+    }
+
+
+    private void SpawnEntriesAroundDestinations(
+        StageContext.SpawnEntry[] entries,
+        Transform parent,
+        List<DeliveryDropZone> destinations,
+        Vector3 fallbackForward,
+        float minR,
+        float maxR,
+        float minSeparation,
+        float minDistFromOtherDestinations,
+        int attempts,
+        float raycastAbove,
+        float raycastDist,
+        LayerMask groundMask)
+    {
+        if (entries == null || entries.Length == 0)
+            return;
+
+        // Collect destination centers in this gameplay scene.
+        List<Vector3> destCenters = null;
+        if (destinations != null)
+        {
+            for (int i = 0; i < destinations.Count; i++)
+            {
+                var dz = destinations[i];
+                if (dz == null) continue;
+                if (dz.gameObject.scene != gameplayScene) continue;
+                if (destCenters == null) destCenters = new List<Vector3>(destinations.Count);
+                destCenters.Add(dz.transform.position);
+            }
+        }
+
+        if (destCenters == null || destCenters.Count == 0)
+            return;
+
+        float minSepSq = minSeparation * minSeparation;
+        int[] spawnedPerDest = new int[destCenters.Count];
+        List<Vector3> occupied = (minSeparation > 0f) ? new List<Vector3>(64) : null;
+
+        for (int i = 0; i < entries.Length; i++)
+        {
+            var e = entries[i];
+            if (e == null || e.prefab == null) continue;
+
+            int minC = Mathf.Max(0, e.minCount);
+            int maxC = Mathf.Max(minC, e.maxCount);
+            int count = (maxC == minC) ? minC : Random.Range(minC, maxC + 1);
+
+            for (int k = 0; k < count; k++)
+            {
+                int destIndex = PickLeastUsedDestination(spawnedPerDest);
+
+                if (!TryFindSpawnPoseAroundDestination(destCenters, destIndex, minR, maxR, minSepSq, occupied, minDistFromOtherDestinations,
+                    attempts, raycastAbove, raycastDist, groundMask, out Vector3 pos, out Vector3 normal))
+                {
+                    // Fallback: place near the destination edge.
+                    Vector3 c = destCenters[destIndex];
+                    pos = c + fallbackForward * minR;
+                    normal = Vector3.up;
+                }
+
+                if (occupied != null)
+                    occupied.Add(pos);
+
+                spawnedPerDest[destIndex]++;
+
+                Quaternion rot = BuildSpawnRotation(e, normal, fallbackForward);
+
+                GameObject go = Instantiate(e.prefab, pos, rot);
+                SceneManager.MoveGameObjectToScene(go, gameplayScene);
+
+                if (parent != null)
+                    go.transform.SetParent(parent, true);
+            }
+        }
+    }
+
+    private static int PickLeastUsedDestination(int[] counts)
+    {
+        if (counts == null || counts.Length == 0) return 0;
+
+        int best = 0;
+        int bestCount = counts[0];
+        int ties = 1;
+
+        for (int i = 1; i < counts.Length; i++)
+        {
+            int c = counts[i];
+            if (c < bestCount)
+            {
+                best = i;
+                bestCount = c;
+                ties = 1;
+            }
+            else if (c == bestCount)
+            {
+                ties++;
+                if (Random.Range(0, ties) == 0)
+                    best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private bool TryFindSpawnPoseAroundDestination(
+        List<Vector3> destinationCenters,
+        int destinationIndex,
+        float minDist,
+        float maxDist,
+        float minSeparationSq,
+        List<Vector3> occupiedPositions,
+        float minDistFromOtherDestinations,
+        int attempts,
+        float raycastAbove,
+        float raycastDist,
+        LayerMask groundMask,
+        out Vector3 pos,
+        out Vector3 normal)
+    {
+        pos = default;
+        normal = Vector3.up;
+
+        if (destinationCenters == null || destinationCenters.Count == 0)
+            return false;
+
+        destinationIndex = Mathf.Clamp(destinationIndex, 0, destinationCenters.Count - 1);
+        Vector3 centerPos = destinationCenters[destinationIndex];
+
+        float otherMinSq = (minDistFromOtherDestinations > 0f) ? (minDistFromOtherDestinations * minDistFromOtherDestinations) : 0f;
+
+        for (int i = 0; i < attempts; i++)
+        {
+            Vector2 dir2 = RandomUnitCircleDirection();
+            float d = Random.Range(minDist, maxDist);
+            Vector3 candidateXZ = centerPos + new Vector3(dir2.x, 0f, dir2.y) * d;
+
+            // Optional: avoid spawning too close to other destinations
+            if (otherMinSq > 0f && destinationCenters.Count > 1)
+            {
+                bool tooClose = false;
+                for (int j = 0; j < destinationCenters.Count; j++)
+                {
+                    if (j == destinationIndex) continue;
+                    if ((new Vector2(candidateXZ.x, candidateXZ.z) - new Vector2(destinationCenters[j].x, destinationCenters[j].z)).sqrMagnitude < otherMinSq)
+                    {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                if (tooClose) continue;
+            }
+
+            // Optional: avoid overlapping other spawned monsters
+            if (occupiedPositions != null && minSeparationSq > 0f)
+            {
+                bool overlap = false;
+                for (int j = 0; j < occupiedPositions.Count; j++)
+                {
+                    if ((new Vector2(candidateXZ.x, candidateXZ.z) - new Vector2(occupiedPositions[j].x, occupiedPositions[j].z)).sqrMagnitude < minSeparationSq)
+                    {
+                        overlap = true;
+                        break;
+                    }
+                }
+                if (overlap) continue;
+            }
+
+            Vector3 origin = candidateXZ + Vector3.up * raycastAbove;
+            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, raycastDist, groundMask, QueryTriggerInteraction.Ignore))
+            {
+                pos = hit.point;
+                normal = hit.normal;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static Vector2 RandomUnitCircleDirection()

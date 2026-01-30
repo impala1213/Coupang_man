@@ -147,6 +147,12 @@ public static class PlanetSelectionState
 
         s_selectedIndex = index;
         s_confirmed = true;
+
+        // Pre-split contract cargo into multi-destination assignments (default 3).
+        var c = s_candidates[index].contract;
+        if (c != null)
+            DestinationAssignmentState.Prepare(c, DestinationAssignmentState.DefaultDestinationCount);
+
         RaiseChanged();
         return true;
     }

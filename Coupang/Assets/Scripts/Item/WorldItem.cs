@@ -39,6 +39,11 @@ public class WorldItem : MonoBehaviour
 
     [HideInInspector] public bool ignoreContainerAutoParent;
 
+    [Header("Interaction Lock (runtime)")]
+    [Tooltip("If true, the player cannot pick up this item (e.g., items sealed by completed drop zones).")]
+    public bool pickupLocked;
+
+
     public bool IsCarrierItem => definition != null && definition.isCarrier;
 
     // ─────────────────────────────────────────────
@@ -56,6 +61,22 @@ public class WorldItem : MonoBehaviour
     {
         throwerRoot = throwerRootTransform;
         ignoreThrowerBreakUntil = Time.time + Mathf.Max(0f, seconds);
+    }
+
+
+    /// <summary>
+    /// Lock/unlock player pickup interaction for this item.
+    /// When locked, PickupInteractable (if present) is disabled and Inventory pickup rejects it.
+    /// </summary>
+    public void SetPickupLocked(bool locked)
+    {
+        pickupLocked = locked;
+
+        // Disable pickup interaction component if present (keeps physics/colliders).
+        var pi = GetComponent<PickupInteractable>();
+        if (!pi) pi = GetComponentInChildren<PickupInteractable>(true);
+        if (!pi) pi = GetComponentInParent<PickupInteractable>();
+        if (pi) pi.enabled = !locked;
     }
 
     private void Awake()

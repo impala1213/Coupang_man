@@ -91,7 +91,21 @@ public class PlayerController : MonoBehaviour
     public bool canBeKnockedBack = true;
     public float knockbackDamping = 5f;
     public float knockbackUpFactor = 0.5f;
+    [Tooltip("Fallback input lock duration if animator knockdown/stand states are not configured.")]
     public float knockdownDuration = 0.6f;
+
+    [Header("Knockdown Input Lock (FallDown -> Stand)")]
+    [Tooltip("If true, player input is locked while the Animator is in PlayerFallDown or PlayerStand (and during transitions).")]
+    public bool lockInputUntilStandEnds = true;
+
+    [Tooltip("Animator base layer index to check for FallDown/Stand states.")]
+    public int knockdownAnimLayer = 0;
+
+    [Tooltip("Animator state name for fall down (AnyState -> this).")]
+    public string fallDownStateName = "PlayerFallDown";
+
+    [Tooltip("Animator state name for stand up.")]
+    public string standStateName = "PlayerStand";
 
     [Header("Carrier Drop (Hold)")]
     public float carrierDropBaseHold = 0.5f;   // minimum hold time
@@ -136,11 +150,15 @@ public class PlayerController : MonoBehaviour
     private bool isKnockedDown;
     private float knockdownTimer;
 
+    // Animator-driven knockdown lock (keeps control locked through stand animation)
+    private bool knockdownAnimLock;
+
     public bool IsControlLocked
     {
         get
         {
             if (isKnockedDown) return true;
+            if (knockdownAnimLock) return true;
             if (energy != null && energy.IsDepleted) return true;
             if (InteractionLock.ModalUIOpen) return true;
             return false;
@@ -200,6 +218,7 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        UpdateKnockdownAnimLock();
         HandleFlashlightToggle();
         Move();
         UpdateInteractableFocusAndTick();
@@ -301,12 +320,14 @@ public class PlayerController : MonoBehaviour
         else
             knockbackVelocity = Vector3.zero;
 
-        if (isKnockedDown)
-        {
+        if (knockdownTimer > 0f)
             knockdownTimer -= Time.deltaTime;
-            if (knockdownTimer <= 0f)
-                isKnockedDown = false;
-        }
+
+        if (knockdownTimer < 0f)
+            knockdownTimer = 0f;
+
+        // Timer lock is a fallback. Animator lock (FallDown -> Stand) is handled separately.
+        isKnockedDown = knockdownTimer > 0f;
 
         // Drive animator locomotion params from the same input/speed values used for movement.
         if (driveAnimatorParams)
@@ -765,6 +786,7 @@ public class PlayerController : MonoBehaviour
         {
             knockbackVelocity = Vector3.zero;
             isKnockedDown = false;
+            knockdownAnimLock = false;
             knockdownTimer = 0f;
         }
 
@@ -799,11 +821,91 @@ public class PlayerController : MonoBehaviour
 
         knockbackVelocity = horizontal + vertical;
 
-        isKnockedDown = true;
-        knockdownTimer = knockdownDuration;
+        // Fallback lock (in case animator states are not set up)
+        knockdownTimer = Mathf.Max(0f, knockdownDuration);
+
+        // Animator-driven lock: stays locked through PlayerFallDown -> PlayerStand, until stand ends.
+        // We don't detach/disable anything; input is blocked by IsControlLocked.
+        if (lockInputUntilStandEnds)
+            knockdownAnimLock = true;
+
+        // Trigger fall down animation if configured.
+        if (driveAnimatorParams)
+            RefreshAnimatorParamCache();
+
+        if (animator && _animHasFallDownTrigger)
+        {
+            try
+            {
+                animator.ResetTrigger(_fallDownTriggerHash);
+                animator.SetTrigger(_fallDownTriggerHash);
+            }
+            catch { /* ignore */ }
+        }
+
+        // Spill the player's inventory on knockback (drop everything as world items).
+        // This is what makes knockdown feel punishing and also cancels hold poses.
+        if (causeCargoSpill && inventory != null)
+        {
+            Transform o = dropOrigin ? dropOrigin : transform;
+            inventory.SpillAllToWorld(o, dir, transform.root);
+
+            // Keep references in sync if the carrier item was dropped.
+            if (inventory.carrier == null)
+                carrier = null;
+        }
 
         if (carrier != null && causeCargoSpill && carrier.HasAnyMounted())
             carrier.SpillAllOnCarrierDrop(transform.position, dir);
+
+    }
+
+    /// <summary>
+    /// Keeps input locked while animator is in FallDown or Stand (or transitioning between them).
+    /// This prevents movement during knockdown and the stand-up animation.
+    /// </summary>
+    private void UpdateKnockdownAnimLock()
+    {
+        if (!lockInputUntilStandEnds)
+        {
+            knockdownAnimLock = false;
+            return;
+        }
+
+        if (!animator || !animator.isActiveAndEnabled)
+        {
+            // No animator -> only fallback timer applies.
+            knockdownAnimLock = false;
+            return;
+        }
+
+        int layer = Mathf.Clamp(knockdownAnimLayer, 0, animator.layerCount - 1);
+
+        // Check current + next state (to cover transitions).
+        AnimatorStateInfo cur = animator.GetCurrentAnimatorStateInfo(layer);
+        bool inTransition = animator.IsInTransition(layer);
+        AnimatorStateInfo next = inTransition ? animator.GetNextAnimatorStateInfo(layer) : default;
+
+        bool curFall = !string.IsNullOrEmpty(fallDownStateName) && cur.IsName(fallDownStateName);
+        bool curStand = !string.IsNullOrEmpty(standStateName) && cur.IsName(standStateName);
+
+        bool nextFall = inTransition && !string.IsNullOrEmpty(fallDownStateName) && next.IsName(fallDownStateName);
+        bool nextStand = inTransition && !string.IsNullOrEmpty(standStateName) && next.IsName(standStateName);
+
+        bool inKnockStates = curFall || curStand || nextFall || nextStand;
+
+        // If we're currently locking due to knockdown, release only after we've fully left both states.
+        if (knockdownAnimLock)
+        {
+            if (!inKnockStates)
+                knockdownAnimLock = false;
+        }
+        else
+        {
+            // If not locking but we enter fall/stand, start locking.
+            if (inKnockStates)
+                knockdownAnimLock = true;
+        }
     }
 
     public bool FindInteractCandidate(out WorldItem world)

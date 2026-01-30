@@ -20,6 +20,9 @@ public class StageContext : MonoBehaviour
     public Transform playerSpawnAnchor;
 
     [Header("Drop Zone Candidates (Goal)")]
+    [Tooltip("If > 0, overrides GameSession destinationSplitCount for this planet (how many separate destinations must be visited).")]
+    public int destinationCountOverride = 0;
+
     [Tooltip("Place multiple candidate transforms in the scene. GameSession will pick one randomly and spawn the DropZone there. The chosen DropZone becomes the radar goal.")]
     public Transform[] dropZoneCandidates;
 
@@ -88,6 +91,26 @@ public class StageContext : MonoBehaviour
 
     [Tooltip("How many random placements to try per spawned object.")]
     public int spawnPlacementAttempts = 24;
+
+    [Header("Monster Spawn (Around Destinations)")]
+    [Tooltip("If true, monsterSpawns will be placed around each destination DropZone instead of around the container.")]
+    public bool spawnMonstersAroundDestinations = true;
+
+    [Tooltip("Minimum horizontal distance from a destination DropZone when spawning monsters.")]
+    public float monsterSpawnMinDistanceFromDestination = 20f;
+
+    [Tooltip("Maximum horizontal distance from a destination DropZone when spawning monsters.")]
+    public float monsterSpawnMaxDistanceFromDestination = 80f;
+
+    [Tooltip("Minimum separation between spawned monsters (to avoid heavy overlaps).")]
+    public float monsterSpawnMinSeparation = 8f;
+
+    [Tooltip("Optional: Minimum distance from OTHER destinations (0 disables).")]
+    public float monsterSpawnMinDistanceFromOtherDestinations = 0f;
+
+    [Tooltip("How many random placements to try per spawned monster (0 uses spawnPlacementAttempts).")]
+    public int monsterSpawnPlacementAttempts = 0;
+
 
     [Header("Spawn Raycast")]
     public float spawnRaycastAboveOffset = 150f;

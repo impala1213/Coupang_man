@@ -409,6 +409,9 @@ public class CreatureChase : MonoBehaviour
             if (t == transform || t.IsChildOf(transform)) continue;
             if (col.isTrigger) continue;
 
+            // WorldItem colliders should NOT block vision (fix: dropped cargo blocking LOS, e.g., PolarBear)
+            if (col.GetComponentInParent<WorldItem>() != null) continue;
+
             float d = s_Hits[i].distance;
             if (d < bestDist)
             {
