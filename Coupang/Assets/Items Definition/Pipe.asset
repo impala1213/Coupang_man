@@ -26,7 +26,7 @@ MonoBehaviour:
   carrierLocalPosition: {x: 0, y: 0, z: 0}
   carrierLocalEuler: {x: 0, y: 0, z: 0}
   carrierLocalScale: {x: 1, y: 1, z: 1}
-  worldPrefab: {fileID: 0}
+  worldPrefab: {fileID: 7560103507226451428, guid: 05990f7f3ae640e4ab6947b7bbe4a25f, type: 3}
   breakable: 0
   breakImpulseThreshold: 15
   brokenPrefab: {fileID: 0}

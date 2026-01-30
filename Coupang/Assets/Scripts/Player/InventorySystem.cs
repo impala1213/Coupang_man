@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
+using DeliveryBot.ItemSystem;
 [DisallowMultipleComponent]
 public class InventorySystem : MonoBehaviour
 {
@@ -564,6 +565,20 @@ public class InventorySystem : MonoBehaviour
     // ─────────────────────────────────────────────
     private void ResolveSockets()
     {
+        // Prefer the dedicated socket component if present (single source of truth).
+        var socketRig = GetComponentInParent<PlayerItemSockets>();
+        if (socketRig != null)
+        {
+            socketRig.TryAutoResolve();
+            _rightHandSocket = socketRig.rightHandSocket;
+            _twoHandSocket = socketRig.twoHandSocket;
+
+            if (!_rightHandSocket) _rightHandSocket = socketRig.transform;
+            if (!_twoHandSocket) _twoHandSocket = socketRig.transform;
+            return;
+        }
+
+        // Fallback: name-based search (kept for backward compatibility).
         Transform playerRoot = GetComponentInParent<PlayerController>() != null
             ? GetComponentInParent<PlayerController>().transform
             : transform;
@@ -645,29 +660,27 @@ public class InventorySystem : MonoBehaviour
         }
 
         // Decide socket by ItemDefinition.carryKind (single source of truth).
-        // Grip is shared; you only need ONE grip transform in the item prefab.
-        //
-        // ✅ IMPORTANT:
-        // Many prefabs don't name their grip consistently, but DO have a DeliveryBot.ItemSystem.ItemSystem
-        // component with the grip reference assigned in the Inspector. Prefer that if present.
+        // 1) Prefer explicitly authored grips on the prefab (ItemSystem.gripR / ItemSystem.carryGrip)
         Transform grip = null;
-        var rig = _heldInstance.GetComponentInChildren<DeliveryBot.ItemSystem.ItemSystem>(true);
-        if (rig != null)
+        var itemSys = _heldInstance.GetComponentInChildren<DeliveryBot.ItemSystem.ItemSystem>(true);
+        if (itemSys != null)
         {
-            if (rig.gripR != null) grip = rig.gripR;
-            else if (rig.carryGrip != null) grip = rig.carryGrip;
+            if (itemSys.gripR != null) grip = itemSys.gripR;
+            else if (itemSys.carryGrip != null) grip = itemSys.carryGrip;
         }
 
-        // Name-based fallback (older prefabs / no rig component)
-        if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, gripName);
-        if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "Grip_R");
-        if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "GripR");
-        if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, carryGripName);
+        // 2) Name-based fallback (legacy / non-ItemSystem prefabs)
+        if (!grip && !string.IsNullOrEmpty(gripName))
+            grip = FindDeepChildBFS(_heldInstance.transform, gripName);
+
+        if (!grip && !string.IsNullOrEmpty(carryGripName))
+            grip = FindDeepChildBFS(_heldInstance.transform, carryGripName);
 
         bool useTwoHandSocket = def.carryKind != CarryKind.OneHand;
         Transform socket = useTwoHandSocket ? _twoHandSocket : _rightHandSocket;
 
-        SnapRootToSocket(_heldInstance.transform, grip, socket);
+        // Matrix-based snap + parent (shared utility).
+        ItemSystemSnapUtil.SnapAndParentToSocket(_heldInstance.transform, grip, socket, true);
     }
 
     private void DestroyHeldVisual()
@@ -698,42 +711,7 @@ public class InventorySystem : MonoBehaviour
         return null;
     }
 
-    /// <summary>
-    /// Snap root so that grip matches socket (position + rotation).
-    /// If grip is null, root is simply parented to socket with zero local transform.
-    /// </summary>
-    private static void SnapRootToSocket(Transform root, Transform grip, Transform socket)
-    {
-        if (!root || !socket) return;
-
-        if (!grip)
-        {
-            root.SetParent(socket, false);
-            root.localPosition = Vector3.zero;
-            root.localRotation = Quaternion.identity;
-            return;
-        }
-
-        // Matrix-based snap (stable)
-        root.SetParent(null, true);
-
-        Matrix4x4 socketM = socket.localToWorldMatrix;
-        Matrix4x4 rootToGrip = root.worldToLocalMatrix * grip.localToWorldMatrix;
-        Matrix4x4 desiredRootM = socketM * rootToGrip.inverse;
-
-        Vector3 pos = (Vector3)desiredRootM.GetColumn(3);
-        Vector3 forward = (Vector3)desiredRootM.GetColumn(2);
-        Vector3 up = (Vector3)desiredRootM.GetColumn(1);
-
-        forward.Normalize();
-        up = (up - Vector3.Dot(up, forward) * forward).normalized;
-        if (up.sqrMagnitude < 0.0001f) up = Vector3.up;
-
-        Quaternion rot = Quaternion.LookRotation(forward, up);
-
-        root.SetPositionAndRotation(pos, rot);
-        root.SetParent(socket, true);
-    }
+    // (Snap helper removed here: we now use ItemSystemSnapUtil to avoid duplicate implementations.)
 
 // ─────────────────────────────────────────────
 // Mission helpers

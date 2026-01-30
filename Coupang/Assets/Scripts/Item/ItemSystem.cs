@@ -26,15 +26,66 @@ namespace DeliveryBot.ItemSystem
 
     public static class ItemSystemSnapUtil
     {
+        /// <summary>
+        /// Snaps an item so that <paramref name="itemGrip"/> matches <paramref name="socket"/> in world space.
+        /// 
+        /// Why matrix-based?
+        /// - Works regardless of where the grip sits in the hierarchy (not necessarily direct child)
+        /// - Less sensitive to parent scale/rotation quirks
+        /// 
+        /// If <paramref name="itemGrip"/> is null, the item root is simply aligned to the socket.
+        /// </summary>
         public static void SnapToSocket(Transform itemRoot, Transform itemGrip, Transform socket)
         {
-            if (itemRoot == null || itemGrip == null || socket == null) return;
+            if (itemRoot == null || socket == null) return;
 
-            Quaternion deltaRot = socket.rotation * Quaternion.Inverse(itemGrip.rotation);
-            itemRoot.rotation = deltaRot * itemRoot.rotation;
+            if (itemGrip == null)
+            {
+                itemRoot.SetPositionAndRotation(socket.position, socket.rotation);
+                return;
+            }
 
-            Vector3 deltaPos = socket.position - itemGrip.position;
-            itemRoot.position += deltaPos;
+            // Compute the relative transform (root -> grip) in matrix form.
+            // For a descendant grip, this collapses to the local matrix from root to grip.
+            Matrix4x4 rootToGrip = itemRoot.worldToLocalMatrix * itemGrip.localToWorldMatrix;
+            Matrix4x4 desiredRootM = socket.localToWorldMatrix * rootToGrip.inverse;
+
+            Vector3 pos = (Vector3)desiredRootM.GetColumn(3);
+            Vector3 forward = (Vector3)desiredRootM.GetColumn(2);
+            Vector3 up = (Vector3)desiredRootM.GetColumn(1);
+
+            // Orthonormalize
+            if (forward.sqrMagnitude < 1e-8f) forward = Vector3.forward;
+            forward.Normalize();
+
+            up = (up - Vector3.Dot(up, forward) * forward);
+            if (up.sqrMagnitude < 1e-8f) up = Vector3.up;
+            up.Normalize();
+
+            Quaternion rot = Quaternion.LookRotation(forward, up);
+            itemRoot.SetPositionAndRotation(pos, rot);
+        }
+
+        /// <summary>
+        /// Snaps (by grip) and then parents the item under the socket while preserving world pose.
+        /// </summary>
+        public static void SnapAndParentToSocket(Transform itemRoot, Transform itemGrip, Transform socket, bool worldPositionStays = true)
+        {
+            if (itemRoot == null || socket == null) return;
+
+            if (itemGrip == null)
+            {
+                // Simple parent + zero local pose
+                itemRoot.SetParent(socket, false);
+                itemRoot.localPosition = Vector3.zero;
+                itemRoot.localRotation = Quaternion.identity;
+                return;
+            }
+
+            // Snap in world space, then parent while preserving the snapped pose.
+            itemRoot.SetParent(null, true);
+            SnapToSocket(itemRoot, itemGrip, socket);
+            itemRoot.SetParent(socket, worldPositionStays);
         }
     }
 
@@ -57,11 +108,6 @@ namespace DeliveryBot.ItemSystem
     {
         public CarryModeOverride modeOverride = CarryModeOverride.Auto;
 
-        // Auto-resolve grips once if not wired in the Inspector.
-        // This prevents the common case where a Grip transform exists in the prefab
-        // but the reference fields are left empty, causing the item to snap using the root.
-        private bool _autoResolved;
-
         [Header("Grips")]
         public Transform gripR;
         public Transform carryGrip;
@@ -83,9 +129,6 @@ namespace DeliveryBot.ItemSystem
 
         public Transform GetGrip(GripSlot slot)
         {
-            if (!_autoResolved)
-                TryAutoResolveGrips();
-
             // We no longer distinguish grip slots for one-hand vs two-hand.
             // Use gripR as the single source of truth (carryGrip is legacy fallback).
             if (gripR != null) return gripR;
@@ -93,63 +136,15 @@ namespace DeliveryBot.ItemSystem
             return transform;
         }
 
-        private void Reset()
+        
+        /// <summary>
+        /// Attach this item to a player socket so that the authored grip point matches the socket.
+        /// If <paramref name="gripOverride"/> is provided, it will be used instead of the authored grips.
+        /// </summary>
+        public void AttachToSocket(Transform socket, Transform gripOverride = null)
         {
-            TryAutoResolveGrips();
-        }
-
-        private void Awake()
-        {
-            TryAutoResolveGrips();
-        }
-
-        private void OnValidate()
-        {
-            // Keep references stable in edit-time.
-            if (!Application.isPlaying)
-                TryAutoResolveGrips();
-        }
-
-        public void TryAutoResolveGrips()
-        {
-            _autoResolved = true;
-
-            if (gripR == null)
-            {
-                gripR = FindDeepChildBFS(transform, "GripR")
-                     ?? FindDeepChildBFS(transform, "Grip_R")
-                     ?? FindDeepChildBFS(transform, "Grip_Right")
-                     ?? FindDeepChildBFS(transform, "Grip")
-                     ?? FindDeepChildBFS(transform, "RightGrip");
-            }
-
-            if (carryGrip == null)
-            {
-                carryGrip = FindDeepChildBFS(transform, "CarryGrip")
-                         ?? FindDeepChildBFS(transform, "Carry_Grip")
-                         ?? FindDeepChildBFS(transform, "TwoHandGrip")
-                         ?? FindDeepChildBFS(transform, "Grip_TwoHand")
-                         ?? FindDeepChildBFS(transform, "GripTwoHand");
-            }
-        }
-
-        private static Transform FindDeepChildBFS(Transform root, string name)
-        {
-            if (!root || string.IsNullOrEmpty(name)) return null;
-
-            var q = new Queue<Transform>();
-            q.Enqueue(root);
-
-            while (q.Count > 0)
-            {
-                var t = q.Dequeue();
-                if (t.name == name) return t;
-
-                for (int i = 0; i < t.childCount; i++)
-                    q.Enqueue(t.GetChild(i));
-            }
-
-            return null;
+            Transform grip = gripOverride != null ? gripOverride : (gripR != null ? gripR : carryGrip);
+            ItemSystemSnapUtil.SnapAndParentToSocket(transform, grip, socket, true);
         }
 
         public CarryType ResolveCarryType(WorldItem wi)
