@@ -646,10 +646,22 @@ public class InventorySystem : MonoBehaviour
 
         // Decide socket by ItemDefinition.carryKind (single source of truth).
         // Grip is shared; you only need ONE grip transform in the item prefab.
-        Transform grip = FindDeepChildBFS(_heldInstance.transform, gripName);
+        //
+        // ✅ IMPORTANT:
+        // Many prefabs don't name their grip consistently, but DO have a DeliveryBot.ItemSystem.ItemSystem
+        // component with the grip reference assigned in the Inspector. Prefer that if present.
+        Transform grip = null;
+        var rig = _heldInstance.GetComponentInChildren<DeliveryBot.ItemSystem.ItemSystem>(true);
+        if (rig != null)
+        {
+            if (rig.gripR != null) grip = rig.gripR;
+            else if (rig.carryGrip != null) grip = rig.carryGrip;
+        }
 
-        // Legacy fallbacks (older prefabs may still use these names)
+        // Name-based fallback (older prefabs / no rig component)
+        if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, gripName);
         if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "Grip_R");
+        if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "GripR");
         if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, carryGripName);
 
         bool useTwoHandSocket = def.carryKind != CarryKind.OneHand;

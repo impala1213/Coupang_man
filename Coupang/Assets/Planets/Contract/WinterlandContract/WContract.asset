@@ -17,4 +17,6 @@ MonoBehaviour:
   requiredItems:
   - item: {fileID: 11400000, guid: 1995a7efd85113243b9761ee1cb486ad, type: 2}
     requiredQty: 4
+  - item: {fileID: 11400000, guid: cc1b603db4d2a3f41928055464540801, type: 2}
+    requiredQty: 4
   minItemsToActivate: 0

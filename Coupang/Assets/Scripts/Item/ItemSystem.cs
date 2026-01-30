@@ -57,6 +57,11 @@ namespace DeliveryBot.ItemSystem
     {
         public CarryModeOverride modeOverride = CarryModeOverride.Auto;
 
+        // Auto-resolve grips once if not wired in the Inspector.
+        // This prevents the common case where a Grip transform exists in the prefab
+        // but the reference fields are left empty, causing the item to snap using the root.
+        private bool _autoResolved;
+
         [Header("Grips")]
         public Transform gripR;
         public Transform carryGrip;
@@ -78,11 +83,73 @@ namespace DeliveryBot.ItemSystem
 
         public Transform GetGrip(GripSlot slot)
         {
+            if (!_autoResolved)
+                TryAutoResolveGrips();
+
             // We no longer distinguish grip slots for one-hand vs two-hand.
             // Use gripR as the single source of truth (carryGrip is legacy fallback).
             if (gripR != null) return gripR;
             if (carryGrip != null) return carryGrip;
             return transform;
+        }
+
+        private void Reset()
+        {
+            TryAutoResolveGrips();
+        }
+
+        private void Awake()
+        {
+            TryAutoResolveGrips();
+        }
+
+        private void OnValidate()
+        {
+            // Keep references stable in edit-time.
+            if (!Application.isPlaying)
+                TryAutoResolveGrips();
+        }
+
+        public void TryAutoResolveGrips()
+        {
+            _autoResolved = true;
+
+            if (gripR == null)
+            {
+                gripR = FindDeepChildBFS(transform, "GripR")
+                     ?? FindDeepChildBFS(transform, "Grip_R")
+                     ?? FindDeepChildBFS(transform, "Grip_Right")
+                     ?? FindDeepChildBFS(transform, "Grip")
+                     ?? FindDeepChildBFS(transform, "RightGrip");
+            }
+
+            if (carryGrip == null)
+            {
+                carryGrip = FindDeepChildBFS(transform, "CarryGrip")
+                         ?? FindDeepChildBFS(transform, "Carry_Grip")
+                         ?? FindDeepChildBFS(transform, "TwoHandGrip")
+                         ?? FindDeepChildBFS(transform, "Grip_TwoHand")
+                         ?? FindDeepChildBFS(transform, "GripTwoHand");
+            }
+        }
+
+        private static Transform FindDeepChildBFS(Transform root, string name)
+        {
+            if (!root || string.IsNullOrEmpty(name)) return null;
+
+            var q = new Queue<Transform>();
+            q.Enqueue(root);
+
+            while (q.Count > 0)
+            {
+                var t = q.Dequeue();
+                if (t.name == name) return t;
+
+                for (int i = 0; i < t.childCount; i++)
+                    q.Enqueue(t.GetChild(i));
+            }
+
+            return null;
         }
 
         public CarryType ResolveCarryType(WorldItem wi)
