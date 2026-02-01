@@ -133,10 +133,11 @@ namespace DeliveryBot.ItemSystem
             // Use gripR as the single source of truth (carryGrip is legacy fallback).
             if (gripR != null) return gripR;
             if (carryGrip != null) return carryGrip;
+
+            // NOTE: returning transform means "no offset", which can look like snapping to socket origin
             return transform;
         }
 
-        
         /// <summary>
         /// Attach this item to a player socket so that the authored grip point matches the socket.
         /// If <paramref name="gripOverride"/> is provided, it will be used instead of the authored grips.
@@ -696,15 +697,51 @@ namespace DeliveryBot.ItemSystem
             EquipOneHandByIndex(equippedIndex);
         }
 
+        // =========================================================
+        // DEBUG + ATTACH
+        // =========================================================
         private void AttachToSocket(WorldItem wi, Transform socket, GripSlot gripSlot)
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log($"[AttachToSocket] START wi={(wi ? wi.name : "null")} socket={(socket ? socket.name : "null")} slot={gripSlot}");
+#endif
             if (wi == null || socket == null) return;
 
             var rig = wi.GetComponent<ItemSystem>();
             Transform grip = (rig != null) ? rig.GetGrip(gripSlot) : null;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            var rigsOnRoot = wi.GetComponents<ItemSystem>();
+            var rigsInChildren = wi.GetComponentsInChildren<ItemSystem>(true);
+
+            Debug.Log($"[AttachToSocket] rig={(rig ? rig.name : "null")} rootItemSystems={rigsOnRoot.Length} childItemSystems={rigsInChildren.Length}");
+            for (int i = 0; i < rigsInChildren.Length; i++)
+            {
+                var r = rigsInChildren[i];
+                Debug.Log($"[AttachToSocket]  - childRig[{i}] name={r.name} path={GetPath(r.transform)} gripR={(r.gripR ? GetPath(r.gripR) : "null")} carryGrip={(r.carryGrip ? GetPath(r.carryGrip) : "null")}");
+            }
+
+            Debug.Log($"[AttachToSocket] grip={(grip ? grip.name : "null")} gripPath={(grip ? GetPath(grip) : "null")}");
+            if (rig != null)
+                Debug.Log($"[AttachToSocket] rig.gripR={(rig.gripR ? GetPath(rig.gripR) : "null")} rig.carryGrip={(rig.carryGrip ? GetPath(rig.carryGrip) : "null")}");
+
+            if (grip != null)
+            {
+                bool gripIsWiRoot = (grip == wi.transform);
+                bool gripIsRigSelf = (rig != null && grip == rig.transform);
+                Debug.Log($"[AttachToSocket] gripIsWiRoot={gripIsWiRoot} gripIsRigSelf={gripIsRigSelf} isChildOfWiRoot={grip.IsChildOf(wi.transform)}");
+
+                float preDist = Vector3.Distance(grip.position, socket.position);
+                float preAng = Quaternion.Angle(grip.rotation, socket.rotation);
+                Debug.Log($"[AttachToSocket] PRE  grip->socket dist={preDist:F4} ang={preAng:F2}");
+            }
+#endif
+
             if (grip == null)
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.LogWarning("[AttachToSocket] grip==null => FALLBACK to socket origin (local zero)");
+#endif
                 wi.transform.SetParent(socket, true);
                 wi.transform.localPosition = Vector3.zero;
                 wi.transform.localRotation = Quaternion.identity;
@@ -714,7 +751,29 @@ namespace DeliveryBot.ItemSystem
             wi.transform.SetParent(null, true);
             ItemSystemSnapUtil.SnapToSocket(wi.transform, grip, socket);
             wi.transform.SetParent(socket, true);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            float postDist = Vector3.Distance(grip.position, socket.position);
+            float postAng = Quaternion.Angle(grip.rotation, socket.rotation);
+            Debug.Log($"[AttachToSocket] POST grip->socket dist={postDist:F4} ang={postAng:F2}");
+
+            Debug.DrawLine(grip.position, socket.position, Color.red, 2f);
+#endif
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private static string GetPath(Transform t)
+        {
+            if (t == null) return "null";
+            string path = t.name;
+            while (t.parent != null)
+            {
+                t = t.parent;
+                path = t.name + "/" + path;
+            }
+            return path;
+        }
+#endif
 
         private void LateUpdate()
         {
