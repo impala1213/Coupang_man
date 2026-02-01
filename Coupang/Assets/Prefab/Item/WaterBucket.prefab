@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6305538808530058349}
   m_Layer: 6
-  m_Name: CarryGrip
+  m_Name: GripPoint
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -25,7 +25,7 @@ Transform:
   m_GameObject: {fileID: 1597631165668536908}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.00509, y: -0.00031, z: -0.00694}
+  m_LocalPosition: {x: -0.0034, y: 0.00148, z: -0.00564}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -41,23 +41,23 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: f3cdef6e4ae77e84c8d1c0a5d16156a1, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 8.69
+      value: 9.040719
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: f3cdef6e4ae77e84c8d1c0a5d16156a1, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 1.0064727
+      value: 1.0064726
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: f3cdef6e4ae77e84c8d1c0a5d16156a1, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 12.189248
+      value: 9.615354
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: f3cdef6e4ae77e84c8d1c0a5d16156a1, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 0.7071068
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: f3cdef6e4ae77e84c8d1c0a5d16156a1, type: 3}
       propertyPath: m_LocalRotation.x
-      value: -0.7071068
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: f3cdef6e4ae77e84c8d1c0a5d16156a1, type: 3}
       propertyPath: m_LocalRotation.y
@@ -65,7 +65,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: f3cdef6e4ae77e84c8d1c0a5d16156a1, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: f3cdef6e4ae77e84c8d1c0a5d16156a1, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
@@ -130,8 +130,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   modeOverride: 2
-  gripR: {fileID: 6305538808530058349}
-  carryGrip: {fileID: 6305538808530058349}
+  gripPoint: {fileID: 6305538808530058349}
   handleA: {fileID: 0}
   handleB: {fileID: 0}
   moveSpeedMultiplier: 1

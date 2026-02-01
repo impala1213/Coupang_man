@@ -24,13 +24,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7174737105650579015}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.008574542, y: 0.000028539187, z: -0.0050794133}
+  m_LocalRotation: {x: 0.18301274, y: 0.6830127, z: -0.18301274, w: 0.6830127}
+  m_LocalPosition: {x: -0.00607, y: 0.000028539187, z: -0.00308}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 9132736642100055983}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 30, y: 90, z: 0}
 --- !u!1 &7560103507226451428
 GameObject:
   m_ObjectHideFlags: 0
@@ -110,8 +110,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   modeOverride: 0
-  gripR: {fileID: 1958255558309988288}
-  carryGrip: {fileID: 0}
+  gripPoint: {fileID: 1958255558309988288}
   handleA: {fileID: 0}
   handleB: {fileID: 0}
   moveSpeedMultiplier: 1

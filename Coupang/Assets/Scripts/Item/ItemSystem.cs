@@ -6,7 +6,6 @@ namespace DeliveryBot.ItemSystem
     public enum CarryType { OneHand, TwoHandCargo, TwoPersonCargo }
     public enum PlayerCarryState { Free, HoldingOneHand, CarryingTwoHand, TwoPerson_OneSide, TwoPerson_TwoSide, Dragging }
     public enum HandleSide { A, B, Auto }
-    public enum GripSlot { GripR, CarryGrip }
     public enum CarryModeOverride { Auto, OneHand, TwoHand, TwoPerson }
 
     public interface IDamageReceiver { void TakeDamage(float amount); }
@@ -27,13 +26,8 @@ namespace DeliveryBot.ItemSystem
     public static class ItemSystemSnapUtil
     {
         /// <summary>
-        /// Snaps an item so that <paramref name="itemGrip"/> matches <paramref name="socket"/> in world space.
-        /// 
-        /// Why matrix-based?
-        /// - Works regardless of where the grip sits in the hierarchy (not necessarily direct child)
-        /// - Less sensitive to parent scale/rotation quirks
-        /// 
-        /// If <paramref name="itemGrip"/> is null, the item root is simply aligned to the socket.
+        /// Snap item so that itemGrip matches socket in world space.
+        /// If itemGrip is null => itemRoot matches socket directly.
         /// </summary>
         public static void SnapToSocket(Transform itemRoot, Transform itemGrip, Transform socket)
         {
@@ -45,29 +39,19 @@ namespace DeliveryBot.ItemSystem
                 return;
             }
 
-            // Compute the relative transform (root -> grip) in matrix form.
-            // For a descendant grip, this collapses to the local matrix from root to grip.
-            Matrix4x4 rootToGrip = itemRoot.worldToLocalMatrix * itemGrip.localToWorldMatrix;
-            Matrix4x4 desiredRootM = socket.localToWorldMatrix * rootToGrip.inverse;
+            // Make grip.rotation == socket.rotation
+            Quaternion deltaRot = socket.rotation * Quaternion.Inverse(itemGrip.rotation);
+            Quaternion newRot = deltaRot * itemRoot.rotation;
 
-            Vector3 pos = (Vector3)desiredRootM.GetColumn(3);
-            Vector3 forward = (Vector3)desiredRootM.GetColumn(2);
-            Vector3 up = (Vector3)desiredRootM.GetColumn(1);
+            // Keep relative offset between root and grip after deltaRot
+            Vector3 v = itemGrip.position - itemRoot.position;
+            Vector3 newPos = socket.position - (deltaRot * v);
 
-            // Orthonormalize
-            if (forward.sqrMagnitude < 1e-8f) forward = Vector3.forward;
-            forward.Normalize();
-
-            up = (up - Vector3.Dot(up, forward) * forward);
-            if (up.sqrMagnitude < 1e-8f) up = Vector3.up;
-            up.Normalize();
-
-            Quaternion rot = Quaternion.LookRotation(forward, up);
-            itemRoot.SetPositionAndRotation(pos, rot);
+            itemRoot.SetPositionAndRotation(newPos, newRot);
         }
 
         /// <summary>
-        /// Snaps (by grip) and then parents the item under the socket while preserving world pose.
+        /// Snap (by grip) and then parent the item under the socket while preserving world pose.
         /// </summary>
         public static void SnapAndParentToSocket(Transform itemRoot, Transform itemGrip, Transform socket, bool worldPositionStays = true)
         {
@@ -75,14 +59,12 @@ namespace DeliveryBot.ItemSystem
 
             if (itemGrip == null)
             {
-                // Simple parent + zero local pose
                 itemRoot.SetParent(socket, false);
                 itemRoot.localPosition = Vector3.zero;
                 itemRoot.localRotation = Quaternion.identity;
                 return;
             }
 
-            // Snap in world space, then parent while preserving the snapped pose.
             itemRoot.SetParent(null, true);
             SnapToSocket(itemRoot, itemGrip, socket);
             itemRoot.SetParent(socket, worldPositionStays);
@@ -108,9 +90,8 @@ namespace DeliveryBot.ItemSystem
     {
         public CarryModeOverride modeOverride = CarryModeOverride.Auto;
 
-        [Header("Grips")]
-        public Transform gripR;
-        public Transform carryGrip;
+        [Header("Grip (single)")]
+        public Transform gripPoint; // ✅ 한손/두손 공용 그립
 
         [Header("Two-person handles (optional)")]
         public Transform handleA;
@@ -127,25 +108,18 @@ namespace DeliveryBot.ItemSystem
         public AnimatorOverrideController oneHandOverride;
         public AnimatorOverrideController twoHandOverride;
 
-        public Transform GetGrip(GripSlot slot)
+        public Transform GetGripPointOrNull()
         {
-            // We no longer distinguish grip slots for one-hand vs two-hand.
-            // Use gripR as the single source of truth (carryGrip is legacy fallback).
-            if (gripR != null) return gripR;
-            if (carryGrip != null) return carryGrip;
-
-            // NOTE: returning transform means "no offset", which can look like snapping to socket origin
-            return transform;
+            return gripPoint != null ? gripPoint : null;
         }
 
         /// <summary>
-        /// Attach this item to a player socket so that the authored grip point matches the socket.
-        /// If <paramref name="gripOverride"/> is provided, it will be used instead of the authored grips.
+        /// Attach this item to a player socket so that authored gripPoint matches the socket.
         /// </summary>
-        public void AttachToSocket(Transform socket, Transform gripOverride = null)
+        public void AttachToSocket(Transform socket)
         {
-            Transform grip = gripOverride != null ? gripOverride : (gripR != null ? gripR : carryGrip);
-            ItemSystemSnapUtil.SnapAndParentToSocket(transform, grip, socket, true);
+            if (socket == null) return;
+            ItemSystemSnapUtil.SnapAndParentToSocket(transform, GetGripPointOrNull(), socket, true);
         }
 
         public CarryType ResolveCarryType(WorldItem wi)
@@ -264,7 +238,7 @@ namespace DeliveryBot.ItemSystem
             wi.ignoreContainerAutoParent = true;
             wi.OnPickedUp(false);
 
-            // WorldItem.OnPickedUp hides renderers; re-enable for carry visuals.
+            // WorldItem.OnPickedUp can hide renderers; re-enable for carry visuals.
             ItemSystemVisualUtil.SetRenderersEnabled(wi.gameObject, true);
         }
 
@@ -341,6 +315,8 @@ namespace DeliveryBot.ItemSystem
             if (socket == null) return;
 
             Transform soloHandle = (side == HandleSide.A) ? handleA : handleB;
+
+            // handle -> socket match
             ItemSystemSnapUtil.SnapToSocket(transform, soloHandle, socket);
 
             Vector3 tiltAxis = socket.right;
@@ -356,10 +332,8 @@ namespace DeliveryBot.ItemSystem
             targetPos.y -= dragOffsetDown;
             transform.position = Vector3.Lerp(transform.position, targetPos, 12f * Time.deltaTime);
 
-            // Damage player
             ItemSystemDamageUtil.DealDamage(solo.gameObject, dragDamagePerSecond_Player * Time.deltaTime);
 
-            // Damage item (no Durability component, use WorldItem)
             if (wi != null && wi.useDurability)
             {
                 int dmg = Mathf.CeilToInt(dragDamagePerSecond_Item * Time.deltaTime);
@@ -546,7 +520,6 @@ namespace DeliveryBot.ItemSystem
             if (wi.rb != null)
                 wi.rb.angularVelocity = ang;
 
-            // Self damage on throw (no Durability component, use WorldItem)
             if (wi.useDurability)
             {
                 int selfDmg = (rig != null) ? rig.throwSelfDamage : 5;
@@ -604,7 +577,7 @@ namespace DeliveryBot.ItemSystem
             wi.ignoreContainerAutoParent = true;
             wi.OnPickedUp(false);
 
-            AttachToSocket(wi, carryRoot, GripSlot.CarryGrip);
+            AttachToSocket(wi, carryRoot);
             ItemSystemVisualUtil.SetRenderersEnabled(wi.gameObject, true);
 
             SetState(PlayerCarryState.CarryingTwoHand);
@@ -667,7 +640,7 @@ namespace DeliveryBot.ItemSystem
             equippedOneHand = wi;
             equippedIndex = index;
 
-            AttachToSocket(wi, rightHandSocket, GripSlot.GripR);
+            AttachToSocket(wi, rightHandSocket);
             ItemSystemVisualUtil.SetRenderersEnabled(wi.gameObject, true);
 
             SetState(PlayerCarryState.HoldingOneHand);
@@ -697,83 +670,15 @@ namespace DeliveryBot.ItemSystem
             EquipOneHandByIndex(equippedIndex);
         }
 
-        // =========================================================
-        // DEBUG + ATTACH
-        // =========================================================
-        private void AttachToSocket(WorldItem wi, Transform socket, GripSlot gripSlot)
+        private void AttachToSocket(WorldItem wi, Transform socket)
         {
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Debug.Log($"[AttachToSocket] START wi={(wi ? wi.name : "null")} socket={(socket ? socket.name : "null")} slot={gripSlot}");
-#endif
             if (wi == null || socket == null) return;
 
             var rig = wi.GetComponent<ItemSystem>();
-            Transform grip = (rig != null) ? rig.GetGrip(gripSlot) : null;
+            Transform grip = (rig != null) ? rig.GetGripPointOrNull() : null;
 
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            var rigsOnRoot = wi.GetComponents<ItemSystem>();
-            var rigsInChildren = wi.GetComponentsInChildren<ItemSystem>(true);
-
-            Debug.Log($"[AttachToSocket] rig={(rig ? rig.name : "null")} rootItemSystems={rigsOnRoot.Length} childItemSystems={rigsInChildren.Length}");
-            for (int i = 0; i < rigsInChildren.Length; i++)
-            {
-                var r = rigsInChildren[i];
-                Debug.Log($"[AttachToSocket]  - childRig[{i}] name={r.name} path={GetPath(r.transform)} gripR={(r.gripR ? GetPath(r.gripR) : "null")} carryGrip={(r.carryGrip ? GetPath(r.carryGrip) : "null")}");
-            }
-
-            Debug.Log($"[AttachToSocket] grip={(grip ? grip.name : "null")} gripPath={(grip ? GetPath(grip) : "null")}");
-            if (rig != null)
-                Debug.Log($"[AttachToSocket] rig.gripR={(rig.gripR ? GetPath(rig.gripR) : "null")} rig.carryGrip={(rig.carryGrip ? GetPath(rig.carryGrip) : "null")}");
-
-            if (grip != null)
-            {
-                bool gripIsWiRoot = (grip == wi.transform);
-                bool gripIsRigSelf = (rig != null && grip == rig.transform);
-                Debug.Log($"[AttachToSocket] gripIsWiRoot={gripIsWiRoot} gripIsRigSelf={gripIsRigSelf} isChildOfWiRoot={grip.IsChildOf(wi.transform)}");
-
-                float preDist = Vector3.Distance(grip.position, socket.position);
-                float preAng = Quaternion.Angle(grip.rotation, socket.rotation);
-                Debug.Log($"[AttachToSocket] PRE  grip->socket dist={preDist:F4} ang={preAng:F2}");
-            }
-#endif
-
-            if (grip == null)
-            {
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-                Debug.LogWarning("[AttachToSocket] grip==null => FALLBACK to socket origin (local zero)");
-#endif
-                wi.transform.SetParent(socket, true);
-                wi.transform.localPosition = Vector3.zero;
-                wi.transform.localRotation = Quaternion.identity;
-                return;
-            }
-
-            wi.transform.SetParent(null, true);
-            ItemSystemSnapUtil.SnapToSocket(wi.transform, grip, socket);
-            wi.transform.SetParent(socket, true);
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            float postDist = Vector3.Distance(grip.position, socket.position);
-            float postAng = Quaternion.Angle(grip.rotation, socket.rotation);
-            Debug.Log($"[AttachToSocket] POST grip->socket dist={postDist:F4} ang={postAng:F2}");
-
-            Debug.DrawLine(grip.position, socket.position, Color.red, 2f);
-#endif
+            ItemSystemSnapUtil.SnapAndParentToSocket(wi.transform, grip, socket, true);
         }
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-        private static string GetPath(Transform t)
-        {
-            if (t == null) return "null";
-            string path = t.name;
-            while (t.parent != null)
-            {
-                t = t.parent;
-                path = t.name + "/" + path;
-            }
-            return path;
-        }
-#endif
 
         private void LateUpdate()
         {

@@ -221,6 +221,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mouseSensitivity: 10
   verticalRotationLimit: 45
+  headSource: {fileID: 4018983770008593814}
+  preserveInitialLocalPose: 1
+  headLocalOffset: {x: 0, y: 0.05, z: 0.15}
+  filterIdleOnly: 1
+  idleSpeedThreshold: 0.12
+  idleSmoothTime: 0.85
+  idleYDeadzone: 0.02
+  maxIdleCancel: 0.06
+  cancelStrength: 1
+  detachFromHeadOnAwake: 0
 --- !u!1 &747640335523926367
 GameObject:
   m_ObjectHideFlags: 0
@@ -746,7 +756,7 @@ GameObject:
   - component: {fileID: 4722083807000527962}
   - component: {fileID: 1776980783709759188}
   m_Layer: 7
-  m_Name: Player
+  m_Name: player
   m_TagString: Player
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -828,11 +838,11 @@ MonoBehaviour:
   interactDistance: 3
   interactMask:
     serializedVersion: 2
-    m_Bits: 576
+    m_Bits: 16960
   leverInteractDistance: 3
   leverMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 16384
   cameraSwitcher: {fileID: 7853041958109623592}
   inventory: {fileID: 6549210287378875072}
   carrier: {fileID: 0}
@@ -841,6 +851,10 @@ MonoBehaviour:
   knockbackDamping: 3
   knockbackUpFactor: 0.3
   knockdownDuration: 1.5
+  lockInputUntilStandEnds: 1
+  knockdownAnimLayer: 0
+  fallDownStateName: PlayerFallDown
+  standStateName: PlayerStand
   carrierDropBaseHold: 0.5
   carrierDropPerWeight: 0.05
   carrierDropMaxHold: 3
@@ -894,12 +908,7 @@ MonoBehaviour:
   spawnHeldVisual: 1
   rightHandSocketName: RightHandSocket
   twoHandSocketName: TwoHandSocket
-  gripName: Grip_R
-  carryGripName: CarryGrip
-  disableCollidersOnHeld: 1
-  disableRigidbodiesOnHeld: 1
-  disableWorldItemOnHeld: 1
-  disablePickupInteractableOnHeld: 1
+  gripPointName: GripPoint
   activeIndex: 0
   slots: []
 --- !u!114 &1307936599342431217
@@ -943,7 +952,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9c710f0aaef738347a56bc2fe27b2e96, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxEnergy: 100
+  maxEnergy: 300
   currentEnergy: 0
   drainPerUnitPerSecond: 0.1
   currentDrainUnits: 1
@@ -1144,7 +1153,7 @@ Transform:
   m_GameObject: {fileID: 6331054733526873318}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.123, y: 0.176, z: -0.085}
+  m_LocalPosition: {x: -0.101, y: 0.412, z: -0.399}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

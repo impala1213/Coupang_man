@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 [DisallowMultipleComponent]
 public class InventorySystem : MonoBehaviour
@@ -25,32 +24,10 @@ public class InventorySystem : MonoBehaviour
     public string rightHandSocketName = "RightHandSocket";
 
     [Tooltip("Socket name under Player hierarchy for two-hand items.")]
-    [FormerlySerializedAs("twoHandSocketName")]
     public string twoHandSocketName = "TwoHandSocket";
 
-    [Tooltip("Grip transform name inside item prefab for one-hand attach.")]
-    [FormerlySerializedAs("gripName")]
-    public string gripName = "Grip_R";
-
-    [Tooltip("Grip transform name inside item prefab for two-hand attach.")]
-    public string carryGripName = "CarryGrip";
-
-    [Tooltip("Disable all colliders on held visual instance.")]
-    public bool disableCollidersOnHeld = true;
-
-    [Tooltip("Disable all rigidbodies on held visual instance.")]
-    public bool disableRigidbodiesOnHeld = true;
-
-    [Tooltip("Disable WorldItem component on held visual instance.")]
-    public bool disableWorldItemOnHeld = true;
-
-    [Tooltip("Disable PickupInteractable on held visual instance if present.")]
-    public bool disablePickupInteractableOnHeld = true;
-
-    [Header("Debug")]
-    public bool enableHeldVisualDebugLogs = true;
-    public bool drawGripToSocketLine = true;
-    public float debugLineDuration = 2f;
+    [Tooltip("Single grip transform name inside item prefab used for BOTH one-hand & two-hand.")]
+    public string gripPointName = "GripPoint";
 
     [Header("State (read-only)")]
     public int activeIndex = 0;
@@ -63,7 +40,6 @@ public class InventorySystem : MonoBehaviour
         public ItemDefinition def;
         public int size;
 
-        // Optional durability snapshot
         public int durCurrent = -1;
         public int durMax = -1;
     }
@@ -177,24 +153,21 @@ public class InventorySystem : MonoBehaviour
     public bool TryPickupWorldItem(WorldItem worldItem)
     {
         if (!worldItem || !worldItem.definition)
-        {
-            Debug.LogWarning("[InventorySystem] WorldItem/definition null.");
             return false;
-        }
 
-        // Items sealed by completed drop zones cannot be picked up
         if (worldItem.pickupLocked)
             return false;
 
         var def = worldItem.definition;
+
         ContractCargoMarker cargoMarker = worldItem.GetComponent<ContractCargoMarker>();
         bool shouldNotifyContractPickup = cargoMarker != null && !cargoMarker.WasPicked;
-        int need = Mathf.Clamp(def.slotSize, 1, slotCount);
 
+        int need = Mathf.Clamp(def.slotSize, 1, slotCount);
         int where = FindContiguousSpace(need);
+
         if (where >= 0)
         {
-            // Snapshot durability if the world item supports it
             int cur = -1, max = -1;
             if (worldItem.TryGetDurability(out var c, out var m))
             {
@@ -214,15 +187,9 @@ public class InventorySystem : MonoBehaviour
                 slots[where + k].stack = data;
 
             if (def.isCarrier)
-            {
-                // Carrier: keep the same world instance and attach it to player
                 HandleCarrierPickup(worldItem);
-            }
             else
-            {
-                // Normal item: let WorldItem handle cleanup (usually destroy)
                 worldItem.OnPickedUp(true);
-            }
 
             if (shouldNotifyContractPickup)
             {
@@ -243,10 +210,7 @@ public class InventorySystem : MonoBehaviour
                 carrier = UnityEngine.Object.FindFirstObjectByType<CarrierController>();
 
             if (!carrier)
-            {
-                Debug.LogWarning("[InventorySystem] Carrier reference missing.");
                 return false;
-            }
 
             if (!def.isCarrier)
                 return carrier.TryMount(worldItem);
@@ -267,7 +231,6 @@ public class InventorySystem : MonoBehaviour
 
         var def = head.def;
 
-        // Carrier dropping is handled separately (hold G)
         if (!def.isCarrier)
         {
             Vector3 pos = ComputeDropPos(dropOrigin, forward);
@@ -283,7 +246,6 @@ public class InventorySystem : MonoBehaviour
                 if (head.durCurrent >= 0 || head.durMax > 0)
                     wi.ApplyDurability(head.durCurrent, head.durMax, true);
 
-                // restore to world state
                 wi.OnDropped(pos, Vector3.zero);
             }
         }
@@ -293,10 +255,6 @@ public class InventorySystem : MonoBehaviour
         return true;
     }
 
-    /// <summary>
-    /// Only removes the carrier item from inventory.
-    /// The actual world drop is done by CarrierController.DropAsBundle.
-    /// </summary>
     public bool DropCarrierAsBundle(Transform dropOrigin, Vector3 forward)
     {
         var head = GetActiveStack();
@@ -308,14 +266,10 @@ public class InventorySystem : MonoBehaviour
         return true;
     }
 
-    // 
-    // Knockback / Impact spill
-    // 
     public int SpillAllToWorld(Transform dropOrigin, Vector3 forward, Transform throwerRoot = null)
     {
         EnsureSlots();
 
-        // Flatten direction (yaw only)
         Vector3 f = forward;
         f.y = 0f;
         if (f.sqrMagnitude < 0.0001f)
@@ -328,7 +282,6 @@ public class InventorySystem : MonoBehaviour
             ? dropOrigin.position
             : (transform.position + transform.forward * 0.6f + Vector3.up * 0.5f);
 
-        // Parameters
         float posJitter = 0.25f;
         float yawSpread = 65f;
         float minSpeed = 2.5f;
@@ -342,7 +295,6 @@ public class InventorySystem : MonoBehaviour
         float carrierThrowSpeed = 3.0f;
         Transform thrower = throwerRoot != null ? throwerRoot : transform;
 
-        // Drop each unique stack only once
         var uniqueStacks = new HashSet<ItemStackData>();
         for (int i = 0; i < slots.Count; i++)
         {
@@ -357,7 +309,6 @@ public class InventorySystem : MonoBehaviour
             if (head == null || head.def == null) continue;
             var def = head.def;
 
-            // Carrier stack
             if (def.isCarrier)
             {
                 if (carrier != null)
@@ -411,7 +362,6 @@ public class InventorySystem : MonoBehaviour
                 continue;
             }
 
-            // Normal item
             if (def.worldPrefab)
             {
                 Vector3 pos = basePos + UnityEngine.Random.insideUnitSphere * posJitter + Vector3.up * 0.2f;
@@ -436,10 +386,6 @@ public class InventorySystem : MonoBehaviour
                 if (wi.rb) wi.rb.angularVelocity = UnityEngine.Random.onUnitSphere * UnityEngine.Random.Range(spinMin, spinMax);
 
                 dropped++;
-            }
-            else
-            {
-                Debug.LogWarning($"[InventorySystem] SpillAllToWorld: '{def.displayName}' has no worldPrefab. Clearing anyway.");
             }
 
             ClearStackFromSlots(head);
@@ -500,11 +446,7 @@ public class InventorySystem : MonoBehaviour
         if (!worldItem) return;
 
         var cc = worldItem.GetComponent<CarrierController>();
-        if (!cc)
-        {
-            Debug.LogWarning("[InventorySystem] Carrier item picked up but no CarrierController found.");
-            return;
-        }
+        if (!cc) return;
 
         worldItem.ignoreContainerAutoParent = true;
         carrier = cc;
@@ -520,8 +462,13 @@ public class InventorySystem : MonoBehaviour
         if (!worldItem.rb) worldItem.rb = worldItem.GetComponent<Rigidbody>();
         if (worldItem.rb)
         {
+            // avoid kinematic angular velocity warning
+            bool wasKin = worldItem.rb.isKinematic;
+            if (wasKin) worldItem.rb.isKinematic = false;
+
             worldItem.rb.linearVelocity = Vector3.zero;
             worldItem.rb.angularVelocity = Vector3.zero;
+
             worldItem.rb.isKinematic = true;
             worldItem.rb.useGravity = false;
         }
@@ -553,38 +500,10 @@ public class InventorySystem : MonoBehaviour
 
         _rightHandSocket = FindDeepChildBFS(playerRoot, rightHandSocketName);
         _twoHandSocket = FindDeepChildBFS(playerRoot, twoHandSocketName);
-        if (!_twoHandSocket) _twoHandSocket = FindDeepChildBFS(playerRoot, "CarrySocket"); // legacy fallback
 
         if (!_rightHandSocket) _rightHandSocket = playerRoot;
         if (!_twoHandSocket) _twoHandSocket = playerRoot;
     }
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-    private static string GetPath(Transform t)
-    {
-        if (t == null) return "null";
-        string path = t.name;
-        while (t.parent != null)
-        {
-            t = t.parent;
-            path = t.name + "/" + path;
-        }
-        return path;
-    }
-
-    private static void LogSnapError(string tag, Transform grip, Transform socket)
-    {
-        if (grip == null || socket == null)
-        {
-            Debug.Log($"{tag} grip or socket null");
-            return;
-        }
-
-        float dist = Vector3.Distance(grip.position, socket.position);
-        float ang = Quaternion.Angle(grip.rotation, socket.rotation);
-        Debug.Log($"{tag} grip->socket dist={dist:F4} ang={ang:F2}");
-    }
-#endif
 
     private void RefreshHeldVisual()
     {
@@ -608,93 +527,43 @@ public class InventorySystem : MonoBehaviour
         _heldInstance = UnityEngine.Object.Instantiate(def.worldPrefab);
         _heldInstance.name = def.worldPrefab.name + "_Held";
 
-        // Make sure held instance is purely visual
-        var heldWorldItems = _heldInstance.GetComponentsInChildren<WorldItem>(true);
-        foreach (var hwi in heldWorldItems)
+        // ✅ 옵션 토글 제거: held는 무조건 "시각용"으로 만든다 (항상 disable)
+        var wis = _heldInstance.GetComponentsInChildren<WorldItem>(true);
+        foreach (var wi in wis)
         {
-            if (!hwi) continue;
-            hwi.ignoreContainerAutoParent = true;
+            if (!wi) continue;
+            wi.ignoreContainerAutoParent = true;
+            wi.enabled = false;
         }
 
-        if (disableCollidersOnHeld)
+        var cols = _heldInstance.GetComponentsInChildren<Collider>(true);
+        foreach (var c in cols)
+            if (c) c.enabled = false;
+
+        var rbs = _heldInstance.GetComponentsInChildren<Rigidbody>(true);
+        foreach (var rb in rbs)
         {
-            var cols = _heldInstance.GetComponentsInChildren<Collider>(true);
-            foreach (var c in cols)
-                if (c) c.enabled = false;
+            if (!rb) continue;
+
+            bool wasKin = rb.isKinematic;
+            if (wasKin) rb.isKinematic = false;
+
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+
+            rb.isKinematic = true;
+            rb.useGravity = false;
         }
 
-        if (disableRigidbodiesOnHeld)
-        {
-            var rbs = _heldInstance.GetComponentsInChildren<Rigidbody>(true);
-            foreach (var rb in rbs)
-            {
-                if (!rb) continue;
+        var pis = _heldInstance.GetComponentsInChildren<PickupInteractable>(true);
+        foreach (var pi in pis)
+            if (pi) pi.enabled = false;
 
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
-        }
-
-        if (disableWorldItemOnHeld)
-        {
-            var wis = _heldInstance.GetComponentsInChildren<WorldItem>(true);
-            foreach (var wi in wis)
-                if (wi) wi.enabled = false;
-        }
-
-        if (disablePickupInteractableOnHeld)
-        {
-            var pis = _heldInstance.GetComponentsInChildren<PickupInteractable>(true);
-            foreach (var pi in pis)
-                if (pi) pi.enabled = false;
-        }
-
-        // one-hand => RightHandSocket + Grip_R
-        // two-hand => TwoHandSocket + CarryGrip
         bool useTwoHandSocket = def.carryKind != CarryKind.OneHand;
         Transform socket = useTwoHandSocket ? _twoHandSocket : _rightHandSocket;
 
-        Transform grip = null;
-        if (useTwoHandSocket)
-        {
-            // Two-hand: CarryGrip first
-            grip = FindDeepChildBFS(_heldInstance.transform, carryGripName);
-            if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "CarryGrip");
-            if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, gripName);
-            if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "Grip_R");
-        }
-        else
-        {
-            // One-hand: Grip_R first
-            grip = FindDeepChildBFS(_heldInstance.transform, gripName);
-            if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "Grip_R");
-            if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, carryGripName);
-            if (!grip) grip = FindDeepChildBFS(_heldInstance.transform, "CarryGrip");
-        }
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-        if (enableHeldVisualDebugLogs)
-        {
-            Debug.Log($"[HeldVisual] def={def.name} carryKind={def.carryKind} prefab={(def.worldPrefab ? def.worldPrefab.name : "null")}");
-            Debug.Log($"[HeldVisual] socket={(socket ? GetPath(socket) : "null")}  right={(_rightHandSocket ? GetPath(_rightHandSocket) : "null")}  twoHand={(_twoHandSocket ? GetPath(_twoHandSocket) : "null")}");
-            Debug.Log($"[HeldVisual] useTwoHand={useTwoHandSocket} gripName='{gripName}' carryGripName='{carryGripName}' foundGrip={(grip ? GetPath(grip) : "null")}");
-            if (grip != null) LogSnapError("[HeldVisual PRE ]", grip, socket);
-            else Debug.LogWarning("[HeldVisual] grip NOT FOUND => will FALLBACK to socket origin");
-        }
-#endif
-
+        Transform grip = FindDeepChildBFS(_heldInstance.transform, gripPointName);
         SnapRootToSocket(_heldInstance.transform, grip, socket);
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-        if (enableHeldVisualDebugLogs && grip != null)
-        {
-            LogSnapError("[HeldVisual POST]", grip, socket);
-            if (drawGripToSocketLine && socket != null)
-                Debug.DrawLine(grip.position, socket.position, Color.red, debugLineDuration);
-        }
-#endif
     }
 
     private void DestroyHeldVisual()
@@ -726,48 +595,32 @@ public class InventorySystem : MonoBehaviour
     }
 
     /// <summary>
-    /// Snap root so that grip matches socket (position + rotation).
-    /// If grip is null, root is simply parented to socket with zero local transform.
-    ///
-    /// 핵심:
-    /// - root를 socket의 자식으로 둔 상태에서,
-    /// - socket 로컬 공간에서 grip이 (0,0,0 / identity)가 되도록 root.localPosition/localRotation을 보정한다.
-    /// → 결과적으로 "CarryGrip이 TwoHandSocket에 딱 맞닿는" 상태가 된다.
+    /// Snap root so that grip matches socket (position + rotation), then parent under socket.
+    /// If grip is null => root directly to socket origin.
     /// </summary>
     private static void SnapRootToSocket(Transform root, Transform grip, Transform socket)
     {
         if (!root || !socket) return;
 
-        // 먼저 socket 밑으로 붙이고(월드 포즈 유지)
-        root.SetParent(socket, true);
-
         if (!grip)
         {
-            // grip이 없으면 그냥 원점 부착
+            root.SetParent(socket, false);
             root.localPosition = Vector3.zero;
             root.localRotation = Quaternion.identity;
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-            Debug.LogWarning("[SnapRootToSocket] grip==null => FALLBACK localPosition/Rotation = zero");
-#endif
             return;
         }
 
-        // 2-pass: 회전 보정 -> 위치 보정 (한 번 더 반복해서 잔오차 제거)
-        for (int pass = 0; pass < 2; pass++)
-        {
-            // (1) 회전: socket 기준으로 grip 회전이 identity가 되게 root를 보정
-            Quaternion gripRotInSocket = Quaternion.Inverse(socket.rotation) * grip.rotation;
-            Quaternion cancelRot = Quaternion.Inverse(gripRotInSocket);
+        // Snap in world, then parent
+        root.SetParent(null, true);
 
-            // socket 로컬에서 root를 회전(원점 기준) : localRotation과 localPosition 둘 다 회전시켜야 함
-            root.localRotation = cancelRot * root.localRotation;
-            root.localPosition = cancelRot * root.localPosition;
+        Quaternion deltaRot = socket.rotation * Quaternion.Inverse(grip.rotation);
+        Quaternion newRot = deltaRot * root.rotation;
 
-            // (2) 위치: socket 기준으로 grip 위치가 Vector3.zero가 되게 root를 보정
-            Vector3 gripPosInSocket = socket.InverseTransformPoint(grip.position);
-            root.localPosition -= gripPosInSocket;
-        }
+        Vector3 v = grip.position - root.position;
+        Vector3 newPos = socket.position - (deltaRot * v);
+
+        root.SetPositionAndRotation(newPos, newRot);
+        root.SetParent(socket, true);
     }
 
     // ─────────────────────────────────────────────
