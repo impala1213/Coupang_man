@@ -2188,21 +2188,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 547560071}
   m_CullTransparentMesh: 1
---- !u!115 &551219671
-MonoScript:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: 
-  serializedVersion: 7
-  m_DefaultReferences: {}
-  m_Icon: {fileID: 0}
-  m_Type: 0
-  m_ExecutionOrder: 0
-  m_ClassName: MeshyBridge
-  m_Namespace: 
-  m_AssemblyName: MeshyAssembly
 --- !u!1 &570989717
 GameObject:
   m_ObjectHideFlags: 0
@@ -3230,21 +3215,6 @@ MonoBehaviour:
   m_LightCookieSize: {x: 1, y: 1}
   m_LightCookieOffset: {x: 0, y: 0}
   m_SoftShadowQuality: 0
---- !u!115 &935287402
-MonoScript:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: 
-  serializedVersion: 7
-  m_DefaultReferences: {}
-  m_Icon: {fileID: 0}
-  m_Type: 0
-  m_ExecutionOrder: 0
-  m_ClassName: MeshyBridge
-  m_Namespace: 
-  m_AssemblyName: MeshyAssembly
 --- !u!1 &948120087 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 7574881781535169993, guid: 304c888f8c7d6ef4ca1c824ac1e2c1fd, type: 3}
@@ -3558,50 +3528,6 @@ MonoBehaviour:
   m_LightCookieSize: {x: 1, y: 1}
   m_LightCookieOffset: {x: 0, y: 0}
   m_SoftShadowQuality: 0
---- !u!1 &1126411521
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1126411523}
-  - component: {fileID: 1126411522}
-  m_Layer: 0
-  m_Name: MeshyBridge
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1126411522
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1126411521}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 551219671}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!4 &1126411523
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1126411521}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1132098821
 GameObject:
   m_ObjectHideFlags: 0
@@ -8339,50 +8265,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2093915018}
   m_CullTransparentMesh: 1
---- !u!1 &2095055473
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2095055475}
-  - component: {fileID: 2095055474}
-  m_Layer: 0
-  m_Name: MeshyBridge
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &2095055474
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2095055473}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 935287402}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!4 &2095055475
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2095055473}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2109688740 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8583663485338637893, guid: 304c888f8c7d6ef4ca1c824ac1e2c1fd, type: 3}
@@ -9890,8 +9772,6 @@ SceneRoots:
   - {fileID: 7468396403367601024}
   - {fileID: 1328840669}
   - {fileID: 304269644}
-  - {fileID: 2095055475}
-  - {fileID: 1126411523}
   - {fileID: 1274455676}
   - {fileID: 1935502672}
   - {fileID: 663909450}
