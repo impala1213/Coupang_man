@@ -57,6 +57,8 @@ public class InventorySystem : MonoBehaviour
     private Transform _twoHandSocket;
     private GameObject _heldInstance;
 
+    public GameObject HeldInstance => _heldInstance;
+
     private void Awake()
     {
         EnsureSlots();
@@ -223,37 +225,55 @@ public class InventorySystem : MonoBehaviour
     /// Drop active item to world as a new prefab (non-carrier items only).
     /// IMPORTANT: Always call WorldItem.OnDropped so the item re-enables physics/colliders properly.
     /// </summary>
-    public bool DropActiveItem(Transform dropOrigin, Vector3 forward)
+    
+/// <summary>
+/// Drop active item to world as a new prefab (non-carrier items only).
+/// IMPORTANT: Always call WorldItem.OnDropped so the item re-enables physics/colliders properly.
+/// </summary>
+public bool DropActiveItem(Transform dropOrigin, Vector3 forward)
+{
+    WorldItem _;
+    return DropActiveItem(dropOrigin, forward, out _);
+}
+
+/// <summary>
+/// Same as DropActiveItem, but returns the spawned WorldItem (if any).
+/// </summary>
+public bool DropActiveItem(Transform dropOrigin, Vector3 forward, out WorldItem spawned)
+{
+    spawned = null;
+
+    var head = GetActiveStack();
+    if (head == null || head.def == null)
+        return false;
+
+    var def = head.def;
+
+    if (!def.isCarrier)
     {
-        var head = GetActiveStack();
-        if (head == null || head.def == null)
-            return false;
+        Vector3 pos = ComputeDropPos(dropOrigin, forward);
 
-        var def = head.def;
-
-        if (!def.isCarrier)
+        if (def.worldPrefab)
         {
-            Vector3 pos = ComputeDropPos(dropOrigin, forward);
+            var go = UnityEngine.Object.Instantiate(def.worldPrefab, pos, Quaternion.identity);
+            go.name = def.worldPrefab.name;
 
-            if (def.worldPrefab)
-            {
-                var go = UnityEngine.Object.Instantiate(def.worldPrefab, pos, Quaternion.identity);
-                go.name = def.worldPrefab.name;
+            var wi = go.GetComponent<WorldItem>() ?? go.AddComponent<WorldItem>();
+            wi.definition = def;
 
-                var wi = go.GetComponent<WorldItem>() ?? go.AddComponent<WorldItem>();
-                wi.definition = def;
+            if (head.durCurrent >= 0 || head.durMax > 0)
+                wi.ApplyDurability(head.durCurrent, head.durMax, true);
 
-                if (head.durCurrent >= 0 || head.durMax > 0)
-                    wi.ApplyDurability(head.durCurrent, head.durMax, true);
-
-                wi.OnDropped(pos, Vector3.zero);
-            }
+            wi.OnDropped(pos, Vector3.zero);
+            spawned = wi;
         }
-
-        ClearStackFromSlots(head);
-        NotifyChanged();
-        return true;
     }
+
+    ClearStackFromSlots(head);
+    NotifyChanged();
+    return true;
+}
+
 
     public bool DropCarrierAsBundle(Transform dropOrigin, Vector3 forward)
     {

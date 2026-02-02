@@ -25,7 +25,7 @@ Transform:
   m_GameObject: {fileID: 7174737105650579015}
   serializedVersion: 2
   m_LocalRotation: {x: 0.18301274, y: 0.6830127, z: -0.18301274, w: 0.6830127}
-  m_LocalPosition: {x: -0.00607, y: 0.000028539187, z: -0.00308}
+  m_LocalPosition: {x: -0.00431, y: 0.000028539187, z: -0.00167}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -44,6 +44,7 @@ GameObject:
   - component: {fileID: 3879426072185933385}
   - component: {fileID: 2844884582350259996}
   - component: {fileID: 821309798422493898}
+  - component: {fileID: 524086992496777489}
   m_Layer: 6
   m_Name: Pipe
   m_TagString: Untagged
@@ -166,6 +167,37 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &524086992496777489
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7560103507226451428}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7687b0ca79da8cf46bdab377b0d5d18c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  usesAttackAnimation: 1
+  behavior: 1
+  range: 1.3
+  radius: 0.7
+  damage: 30
+  minDamage: 5
+  scaleDamageWithHold: 1
+  hitMask:
+    serializedVersion: 2
+    m_Bits: 12544
+  ignoreTriggers: 0
+  drawDamageGizmos: 1
+  useCameraAimForGizmosWhenHeld: 1
+  drawOnlyWhenHeldByPlayer: 1
+  gizmoOrigin: {fileID: 0}
+  gizmoDirection: {fileID: 0}
+  drawGizmosAlways: 0
+  drawDamageLabel: 1
+  damageLabelText: 
 --- !u!1001 &8734527980881848388
 PrefabInstance:
   m_ObjectHideFlags: 0

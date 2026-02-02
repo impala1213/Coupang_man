@@ -139,6 +139,39 @@ public class PlayerController : MonoBehaviour
     [Tooltip("Radius to find the freshly spawned dropped item.")]
     public float throwFindRadius = 2.0f;
 
+
+[Header("Use / Attack Action (LMB + Throw Anim)")]
+[Tooltip("If true, PlayerController can drive AttackReady(bool) + Attack(trigger) for usable items and charged throw.")]
+public bool enableUseActions = true;
+
+[Tooltip("Animator layer index used for AttackReady/Attack states (often UpperBody).")]
+public int actionAnimLayerIndex = 1;
+
+[Tooltip("Animator bool param that keeps player in AttackReady/prepare state while held.")]
+public string attackReadyBoolParam = "AttackReady";
+
+[Tooltip("Animator trigger param that starts the Attack animation.")]
+public string attackTriggerParam = "Attack";
+
+[Tooltip("Animator state name for the attack clip (used to lock attack input until it finishes).")]
+public string actionAttackStateName = "PlayerActionAttack";
+
+[Tooltip("Seconds required in AttackReady before attack can fire. (Quick tap queues release, attack fires after this.)")]
+public float actionPrepareTime = 0.25f;
+
+public float chargeMaxHoldTime = 1.0f; // seconds to reach full charge
+[Tooltip("Fallback seconds after Attack starts to execute if no animation event is configured.")]
+public float actionExecuteFallbackDelay = 0.12f;
+
+[Tooltip("Safety timeout for ending the action even if state name tracking fails.")]
+public float actionTotalTime = 0.8f;
+
+[Tooltip("If true, blocks further attacks until the Animator has finished the attack state.")]
+public bool unlockWhenAttackAnimEnds = true;
+
+[Tooltip("If true, auto-add an animation event relay on the Animator GameObject (no extra script file needed).")]
+public bool autoAttachAnimEventRelay = true;
+
     [Header("Debug")]
     public bool debugLever;
 
@@ -182,6 +215,39 @@ public class PlayerController : MonoBehaviour
     private float itemHoldTimer;
     private int itemHoldIndex;
 
+// LMB use / attack + charged throw action state
+private enum UseActionType { None, Primary, Throw }
+private UseActionType _useAction = UseActionType.None;
+private bool _usePreparing;
+private bool _useReleaseQueued;
+private float _useHeldTime;
+private float _usePrepareStartTime;
+private float _useAttackStartTime;
+private float _useExecuteFallbackAt;
+private float _useHardEndAt;
+private bool _useExecuted;
+private bool _useSawAttackState;
+
+private IPlayerUsable _useUsable; // only for Primary
+private bool _useWantsAnim;
+
+private Vector3 _useAimForward;
+
+// throw cached params (computed on release)
+private int _throwIndex;
+private ItemDefinition _throwDef;
+private Vector3 _throwDir;
+private float _throwForce;
+private float _throwSpin;
+
+// Animator param cache for attack control
+private int _attackReadyHash;
+private int _attackTriggerHash;
+private bool _animHasAttackReady;
+private bool _animHasAttackTrigger;
+private int _attackParamCacheKey;
+
+
     // Optional: definition-based carry lock support (reflection)
     private static bool s_carryKindChecked;
     private static FieldInfo s_carryKindField;
@@ -214,6 +280,9 @@ public class PlayerController : MonoBehaviour
             carrierSlotUI = FindFirstObjectByType<CarrierSlotUI>();
 
         RefreshAnimatorParamCache(force: true);
+
+RefreshAttackAnimatorParamCache(force: true);
+EnsureAnimEventRelay();
     }
 
     void Update()
@@ -225,6 +294,7 @@ public class PlayerController : MonoBehaviour
 
         HandleHotbar();
         HandleActions();
+        TickUseAction();
 
         // Must run every frame to detect G release and decide drop vs throw.
         HandleItemDropThrowHold();
@@ -350,6 +420,18 @@ public class PlayerController : MonoBehaviour
     void HandleHotbar()
     {
         if (IsControlLocked) return;
+
+
+// LMB: usable item action (hold=ready, release=attack)
+if (enableUseActions)
+{
+    if (Input.GetMouseButtonDown(0))
+        TryBeginPrimaryUsePrepare();
+
+    if (Input.GetMouseButtonUp(0))
+        OnPrimaryUseReleased();
+}
+
         if (!inventory) return;
 
         if (IsCarryLockedByDefinition(inventory.ActiveDef()))
@@ -358,6 +440,9 @@ public class PlayerController : MonoBehaviour
         if (itemHoldActive)
             return;
 
+
+        if (_useAction != UseActionType.None)
+            return;
         if (Input.GetKeyDown(KeyCode.Alpha1)) inventory.SetActiveIndex(0);
         if (Input.GetKeyDown(KeyCode.Alpha2)) inventory.SetActiveIndex(1);
         if (Input.GetKeyDown(KeyCode.Alpha3)) inventory.SetActiveIndex(2);
@@ -431,6 +516,7 @@ public class PlayerController : MonoBehaviour
         // G: carrier hold drop OR item tap-drop / hold-throw
         if (Input.GetKeyDown(KeyCode.G))
         {
+            if (_useAction != UseActionType.None) return;
             if (!inventory) return;
 
             ItemDefinition activeDef = inventory.ActiveDef();
@@ -460,12 +546,6 @@ public class PlayerController : MonoBehaviour
                 itemHoldIndex = inventory.activeIndex;
             }
         }
-
-        // LMB: use hook (intentionally empty)
-        if (Input.GetMouseButtonDown(0))
-        {
-            // Item use system hook
-        }
     }
 
     // Decide drop vs throw based on hold duration and camera direction.
@@ -480,16 +560,41 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        if (Input.GetKey(KeyCode.G))
+        
+if (Input.GetKey(KeyCode.G))
+{
+    itemHoldTimer += Time.deltaTime;
+
+    // If the player holds long enough, convert this hold into a "throw action" (plays AttackReady/Attack),
+    // so quick tap-drop remains animation-free.
+    if (enableUseActions && _useAction == UseActionType.None)
+    {
+        ItemDefinition curDef = inventory.ActiveDef();
+        bool canThrowNow = (curDef != null) && !curDef.isCarrier && IsOneHandByDefinitionOrDefault(curDef);
+
+        if (canThrowNow && itemHoldTimer >= throwHoldTime)
         {
-            itemHoldTimer += Time.deltaTime;
-            return;
+            BeginThrowPrepare(curDef, itemHoldIndex);
         }
+    }
 
-        // Released
-        itemHoldActive = false;
+    return;
+}
 
-        inventory.SetActiveIndex(itemHoldIndex);
+
+
+// Released
+itemHoldActive = false;
+
+// If we already converted to throw action (AttackReady), releasing should trigger Attack (and actual throw at animation event).
+if (_useAction == UseActionType.Throw)
+{
+    OnThrowReleased();
+    itemHoldTimer = 0f;
+    return;
+}
+
+inventory.SetActiveIndex(itemHoldIndex);
         ItemDefinition def = inventory.ActiveDef();
         if (def == null)
         {
@@ -1134,5 +1239,477 @@ public class PlayerController : MonoBehaviour
         s_carryKindChecked = true;
 
         s_carryKindField = typeof(ItemDefinition).GetField("carryKind", BindingFlags.Public | BindingFlags.Instance);
+    }
+
+// ─────────────────────────────────────────────
+// Use / Attack Action (LMB + Throw Anim)
+// ─────────────────────────────────────────────
+
+private void RefreshAttackAnimatorParamCache(bool force = false)
+{
+    if (!animator)
+    {
+        _animHasAttackReady = false;
+        _animHasAttackTrigger = false;
+        return;
+    }
+
+    int key = 17;
+    key = key * 31 + (attackReadyBoolParam != null ? attackReadyBoolParam.GetHashCode() : 0);
+    key = key * 31 + (attackTriggerParam != null ? attackTriggerParam.GetHashCode() : 0);
+
+    if (!force && key == _attackParamCacheKey)
+        return;
+
+    _attackParamCacheKey = key;
+
+    _animHasAttackReady = false;
+    _animHasAttackTrigger = false;
+
+    if (!string.IsNullOrEmpty(attackReadyBoolParam))
+    {
+        _attackReadyHash = Animator.StringToHash(attackReadyBoolParam);
+    }
+
+    if (!string.IsNullOrEmpty(attackTriggerParam))
+    {
+        _attackTriggerHash = Animator.StringToHash(attackTriggerParam);
+    }
+
+    // Verify parameter existence
+    foreach (var p in animator.parameters)
+    {
+        if (!_animHasAttackReady &&
+            p.type == AnimatorControllerParameterType.Bool &&
+            p.name == attackReadyBoolParam)
+            _animHasAttackReady = true;
+
+        if (!_animHasAttackTrigger &&
+            p.type == AnimatorControllerParameterType.Trigger &&
+            p.name == attackTriggerParam)
+            _animHasAttackTrigger = true;
+    }
+}
+
+private void EnsureAnimEventRelay()
+{
+    if (!autoAttachAnimEventRelay) return;
+    if (!animator) return;
+
+    var go = animator.gameObject;
+    var relay = go.GetComponent<PlayerAnimationEventRelay>();
+    if (!relay) relay = go.AddComponent<PlayerAnimationEventRelay>();
+    relay.controller = this;
+}
+
+private bool CanDriveAttackAnim()
+{
+    if (!enableUseActions) return false;
+    if (!animator) return false;
+
+    RefreshAttackAnimatorParamCache();
+
+    return _animHasAttackReady && _animHasAttackTrigger;
+}
+
+private void SetAttackReady(bool ready)
+{
+    if (!CanDriveAttackAnim()) return;
+    animator.SetBool(_attackReadyHash, ready);
+}
+
+private void FireAttackTrigger()
+{
+    if (!CanDriveAttackAnim()) return;
+    animator.SetTrigger(_attackTriggerHash);
+}
+
+private IPlayerUsable GetHeldUsable()
+{
+    if (inventory == null) return null;
+    var held = inventory.HeldInstance;
+    if (!held) return null;
+
+    // Unity GetComponent<T>() does not support interfaces. Search MonoBehaviours.
+    var behaviours = held.GetComponentsInChildren<MonoBehaviour>(true);
+    for (int i = 0; i < behaviours.Length; i++)
+    {
+        if (behaviours[i] is IPlayerUsable usable)
+            return usable;
+    }
+    return null;
+}
+
+private void TryBeginPrimaryUsePrepare()
+{
+    if (_useAction != UseActionType.None) return;
+    if (IsControlLocked) return;
+    if (inventory == null) return;
+
+    if (IsCarryLockedByDefinition(inventory.ActiveDef()))
+        return;
+
+    var usable = GetHeldUsable();
+    if (usable == null) return; // not a usable item
+
+    _useUsable = usable;
+    _useWantsAnim = usable.UsesAttackAnimation && CanDriveAttackAnim();
+
+    _useAction = UseActionType.Primary;
+    _usePreparing = true;
+    _useReleaseQueued = false;
+    _useHeldTime = 0f;
+    _usePrepareStartTime = Time.time;
+    _useExecuted = false;
+    _useSawAttackState = false;
+
+    _useAimForward = GetAimForward();
+
+    if (_useWantsAnim)
+    {
+        // Enter AttackReady state
+        SetAttackReady(true);
+        animator.ResetTrigger(_attackTriggerHash);
+    }
+
+    var ctx = new PlayerUseActionContext
+    {
+        input = PlayerUseInput.Primary,
+        heldTime = 0f,
+        charge01 = Mathf.Clamp01((0f) / Mathf.Max(0.0001f, chargeMaxHoldTime)),
+        aimForward = _useAimForward,
+        usesAnimation = _useWantsAnim
+    };
+    usable.OnPrepare(this, ctx);
+}
+
+private void OnPrimaryUseReleased()
+{
+    if (_useAction != UseActionType.Primary) return;
+
+    _useAimForward = GetAimForward();
+
+    // If still preparing, queue release. If prepare time already passed, start attack immediately.
+    if (_usePreparing)
+    {
+        float preparedFor = Time.time - _usePrepareStartTime;
+        if (preparedFor >= actionPrepareTime)
+        {
+            StartUseAttack(PlayerUseInput.Primary);
+        }
+        else
+        {
+            _useReleaseQueued = true;
+        }
+    }
+}
+
+private void BeginThrowPrepare(ItemDefinition def, int index)
+{
+    if (_useAction != UseActionType.None) return;
+    if (IsControlLocked) return;
+    if (inventory == null) return;
+    if (def == null) return;
+
+    // Lock to this item
+    inventory.SetActiveIndex(index);
+    _throwIndex = index;
+    _throwDef = def;
+
+    _useUsable = null;
+    _useWantsAnim = CanDriveAttackAnim(); // throw always tries to use the action anim if configured
+
+    _useAction = UseActionType.Throw;
+    _usePreparing = true;
+    _useReleaseQueued = false;
+    _useHeldTime = 0f;
+    _usePrepareStartTime = Time.time;
+    _useExecuted = false;
+    _useSawAttackState = false;
+
+    _useAimForward = GetAimForward();
+
+    if (_useWantsAnim)
+    {
+        SetAttackReady(true);
+        animator.ResetTrigger(_attackTriggerHash);
+    }
+}
+
+private void OnThrowReleased()
+{
+    if (_useAction != UseActionType.Throw) return;
+
+    // Compute final throw params based on total hold duration
+    float denom = Mathf.Max(0.01f, throwChargeTime);
+    float charge01 = Mathf.Clamp01((itemHoldTimer - throwHoldTime) / denom);
+
+    float force = Mathf.Lerp(throwMinForce, throwMaxForce, charge01);
+    float upBias = Mathf.Lerp(throwMaxUpBias, throwMinUpBias, charge01);
+    float spin = Mathf.Lerp(throwMinSpin, throwMaxSpin, charge01);
+
+    _useAimForward = GetAimForward();
+    _throwForce = force;
+    _throwSpin = spin;
+    _throwDir = (_useAimForward + Vector3.up * upBias).normalized;
+
+    if (_usePreparing)
+    {
+        float preparedFor = Time.time - _usePrepareStartTime;
+        if (preparedFor >= actionPrepareTime)
+        {
+            StartUseAttack(PlayerUseInput.Throw);
+        }
+        else
+        {
+            _useReleaseQueued = true;
+        }
+    }
+}
+
+private void StartUseAttack(PlayerUseInput input)
+{
+    if (_useAction == UseActionType.None) return;
+    if (!_usePreparing) return;
+
+    _usePreparing = false;
+    _useAttackStartTime = Time.time;
+    _useExecuteFallbackAt = Time.time + Mathf.Max(0f, actionExecuteFallbackDelay);
+    _useHardEndAt = Time.time + Mathf.Max(0.05f, actionTotalTime);
+
+    if (_useWantsAnim)
+    {
+        // Leave AttackReady -> enter Attack via trigger
+        SetAttackReady(false);
+        FireAttackTrigger();
+    }
+    else
+    {
+        // No animation: execute at fallback time
+    }
+}
+
+private void CancelUseAction()
+{
+    if (_useAction == UseActionType.None) return;
+
+    // Clear animator params
+    if (_useWantsAnim)
+    {
+        SetAttackReady(false);
+        if (animator && _animHasAttackTrigger)
+            animator.ResetTrigger(_attackTriggerHash);
+    }
+
+    // Notify usable
+    if (_useAction == UseActionType.Primary && _useUsable != null)
+    {
+        var ctx = new PlayerUseActionContext
+        {
+            input = PlayerUseInput.Primary,
+            heldTime = _useHeldTime,
+            charge01 = Mathf.Clamp01((_useHeldTime) / Mathf.Max(0.0001f, chargeMaxHoldTime)),
+            aimForward = _useAimForward,
+            usesAnimation = _useWantsAnim
+        };
+        _useUsable.OnCancel(this, ctx);
+    }
+
+    _useAction = UseActionType.None;
+    _usePreparing = false;
+    _useReleaseQueued = false;
+    _useHeldTime = 0f;
+    _useExecuted = false;
+    _useUsable = null;
+    _throwDef = null;
+}
+
+private void EndUseAction()
+{
+    if (_useWantsAnim)
+    {
+        SetAttackReady(false);
+        if (animator && _animHasAttackTrigger)
+            animator.ResetTrigger(_attackTriggerHash);
+    }
+
+    _useAction = UseActionType.None;
+    _usePreparing = false;
+    _useReleaseQueued = false;
+    _useHeldTime = 0f;
+    _useExecuted = false;
+    _useUsable = null;
+    _throwDef = null;
+}
+
+private void TickUseAction()
+{
+    if (_useAction == UseActionType.None)
+        return;
+
+    if (IsControlLocked)
+    {
+        CancelUseAction();
+        return;
+    }
+
+    if (_usePreparing)
+    {
+        _useHeldTime += Time.deltaTime;
+
+        // If released early, fire as soon as prepare time ends
+        if (_useReleaseQueued && (Time.time - _usePrepareStartTime) >= actionPrepareTime)
+        {
+            StartUseAttack(_useAction == UseActionType.Primary ? PlayerUseInput.Primary : PlayerUseInput.Throw);
+        }
+
+        return;
+    }
+
+    // Attacking stage
+    if (!_useExecuted && Time.time >= _useExecuteFallbackAt)
+    {
+        ExecuteUseNow();
+    }
+
+    bool endByTime = Time.time >= _useHardEndAt;
+    bool endByAnim = false;
+
+    if (unlockWhenAttackAnimEnds && _useWantsAnim && animator && !string.IsNullOrEmpty(actionAttackStateName))
+    {
+        int layer = Mathf.Clamp(actionAnimLayerIndex, 0, animator.layerCount - 1);
+        bool inTrans = animator.IsInTransition(layer);
+        var st = animator.GetCurrentAnimatorStateInfo(layer);
+
+        bool inAttack = st.IsName(actionAttackStateName);
+        if (inAttack)
+        {
+            _useSawAttackState = true;
+            if (!inTrans && st.normalizedTime >= 1f)
+                endByAnim = true;
+        }
+        else
+        {
+            if (_useSawAttackState && !inTrans)
+                endByAnim = true;
+        }
+    }
+
+    if (endByAnim || endByTime)
+    {
+        EndUseAction();
+    }
+}
+
+private Vector3 GetAimForward()
+{
+    Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+    Vector3 fwd = cam ? cam.transform.forward : transform.forward;
+    if (fwd.sqrMagnitude < 0.0001f) fwd = transform.forward;
+    return fwd.normalized;
+}
+
+/// <summary>
+/// Called by Animation Event (AttackExecute) via PlayerAnimationEventRelay.
+/// Put the event on the ATTACK clip at the exact hit/release frame.
+/// </summary>
+public void AnimEvent_AttackExecute()
+{
+    if (_useAction == UseActionType.None) return;
+    if (_usePreparing) return;
+    if (_useExecuted) return;
+
+    ExecuteUseNow();
+}
+
+private void ExecuteUseNow()
+{
+    if (_useExecuted) return;
+    _useExecuted = true;
+
+    if (_useAction == UseActionType.Primary)
+    {
+        if (_useUsable != null)
+        {
+            var ctx = new PlayerUseActionContext
+            {
+                input = PlayerUseInput.Primary,
+                heldTime = _useHeldTime,
+                charge01 = Mathf.Clamp01((_useHeldTime) / Mathf.Max(0.0001f, chargeMaxHoldTime)),
+                aimForward = _useAimForward,
+                usesAnimation = _useWantsAnim
+            };
+            _useUsable.OnExecute(this, ctx);
+        }
+        return;
+    }
+
+    if (_useAction == UseActionType.Throw)
+    {
+        if (inventory == null) return;
+
+        inventory.SetActiveIndex(_throwIndex);
+
+        Transform origin = dropOrigin ? dropOrigin : transform;
+        Vector3 fwd = _useAimForward;
+
+        WorldItem spawned;
+        bool dropped = inventory.DropActiveItem(origin, fwd, out spawned);
+
+        if (!dropped) return;
+
+        if (spawned != null)
+        {
+            ApplyThrowToWorldItem(spawned, _throwDir, _throwForce, _throwSpin);
+        }
+        else
+        {
+            // Fallback: search nearby (old method)
+            Vector3 expectedDropPos = origin
+                ? origin.position + fwd * 0.6f + Vector3.up * 0.5f
+                : transform.position + fwd * 0.6f + Vector3.up * 0.5f;
+
+            TryApplyThrowToFreshDrop(_throwDef, expectedDropPos, _throwDir, _throwForce, _throwSpin);
+        }
+    }
+}
+
+private void ApplyThrowToWorldItem(WorldItem wi, Vector3 dir, float force, float spin)
+{
+    if (!wi) return;
+
+    if (!wi.rb) wi.rb = wi.GetComponent<Rigidbody>();
+    if (!wi.rb) wi.rb = wi.gameObject.AddComponent<Rigidbody>();
+
+    wi.rb.isKinematic = false;
+    wi.rb.useGravity = true;
+
+    Vector3 playerVel = controller != null ? controller.velocity : Vector3.zero;
+    Vector3 initialVel = dir.normalized * Mathf.Max(0f, force) + playerVel * 0.15f;
+
+    wi.ArmIgnoreBreakForThrower(transform.root, 0.25f);
+    wi.rb.linearVelocity = initialVel;
+
+    if (spin > 0f)
+        wi.rb.angularVelocity = UnityEngine.Random.onUnitSphere * spin;
+}
+
+}
+
+
+/// <summary>
+/// Animation Event receiver.
+/// Attach (or auto-attached) to the same GameObject that has the Animator.
+/// In the ATTACK animation clip, add an Animation Event calling "AttackExecute".
+/// </summary>
+[DisallowMultipleComponent]
+public class PlayerAnimationEventRelay : MonoBehaviour
+{
+    public PlayerController controller;
+
+    // Animation Event function name
+    public void AttackExecute()
+    {
+        if (controller) controller.AnimEvent_AttackExecute();
     }
 }
