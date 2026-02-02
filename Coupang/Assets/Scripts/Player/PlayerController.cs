@@ -140,6 +140,24 @@ public class PlayerController : MonoBehaviour
     public float throwFindRadius = 2.0f;
 
 
+[Header("Throw Aim (FPS Center)")]
+[Tooltip("If true, throws aim through the center of the active camera like an FPS (ray from screen center -> aim point, then throw from dropOrigin to that point).")]
+public bool throwAimThroughScreenCenter = true;
+
+[Tooltip("Max distance for screen-center raycast to find an aim point. If nothing hit, uses this distance along the ray.")]
+public float throwAimMaxDistance = 60f;
+
+[Tooltip("Layers used for aim raycast from screen center. Exclude the player's own layers.")]
+public LayerMask throwAimMask = ~0;
+
+[Tooltip("If true, ignores trigger colliders when aiming.")]
+public bool throwAimIgnoreTriggers = true;
+
+[Tooltip("If true, raycast will skip colliders that belong to this player (self).")]
+public bool throwAimIgnoreSelf = true;
+
+
+
 [Header("Use / Attack Action (LMB + Throw Anim)")]
 [Tooltip("If true, PlayerController can drive AttackReady(bool) + Attack(trigger) for usable items and charged throw.")]
 public bool enableUseActions = true;
@@ -1451,9 +1469,8 @@ private void OnThrowReleased()
     _useAimForward = GetAimForward();
     _throwForce = force;
     _throwSpin = spin;
-    _throwDir = (_useAimForward + Vector3.up * upBias).normalized;
-
-    if (_usePreparing)
+    _throwDir = GetThrowDirectionFPS(upBias);
+if (_usePreparing)
     {
         float preparedFor = Time.time - _usePrepareStartTime;
         if (preparedFor >= actionPrepareTime)
@@ -1608,6 +1625,80 @@ private Vector3 GetAimForward()
     if (fwd.sqrMagnitude < 0.0001f) fwd = transform.forward;
     return fwd.normalized;
 }
+
+private bool TryGetScreenCenterAimPoint(out Vector3 aimPoint)
+{
+    aimPoint = Vector3.zero;
+
+    Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+    if (cam == null) return false;
+
+    Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+    float maxDist = Mathf.Max(0.1f, throwAimMaxDistance);
+
+    QueryTriggerInteraction qti = throwAimIgnoreTriggers ? QueryTriggerInteraction.Ignore : QueryTriggerInteraction.Collide;
+
+    // RaycastAll so we can skip self-colliders if needed.
+    RaycastHit[] hits = Physics.RaycastAll(ray, maxDist, throwAimMask, qti);
+    if (hits != null && hits.Length > 0)
+    {
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider c = hits[i].collider;
+            if (c == null) continue;
+
+            if (throwAimIgnoreSelf)
+            {
+                // Skip any colliders that belong to this player.
+                if (c.transform.IsChildOf(transform)) continue;
+            }
+
+            aimPoint = hits[i].point;
+            return true;
+        }
+    }
+
+    // Fallback: a point straight ahead from the camera center.
+    aimPoint = ray.GetPoint(maxDist);
+    return true;
+}
+
+private Vector3 GetThrowDirectionFPS(float upBias)
+{
+    // Origin of the throw: prefer dropOrigin.
+    Vector3 origin = dropOrigin ? dropOrigin.position : (transform.position + Vector3.up * 1.2f);
+
+    if (!throwAimThroughScreenCenter)
+    {
+        Vector3 fwd = GetAimForward();
+        return (fwd + Vector3.up * upBias).normalized;
+    }
+
+    if (!TryGetScreenCenterAimPoint(out Vector3 aimPoint))
+    {
+        Vector3 fwd = GetAimForward();
+        return (fwd + Vector3.up * upBias).normalized;
+    }
+
+    Vector3 dir = (aimPoint - origin);
+    if (dir.sqrMagnitude < 0.0001f)
+        dir = GetAimForward();
+
+    dir.Normalize();
+
+    // Optional arc: bias along camera up to keep it feeling FPS-like.
+    if (Mathf.Abs(upBias) > 0.0001f)
+    {
+        Camera cam = cameraSwitcher ? cameraSwitcher.GetActiveCamera() : Camera.main;
+        Vector3 up = cam ? cam.transform.up : Vector3.up;
+        dir = (dir + up * upBias).normalized;
+    }
+
+    return dir;
+}
+
 
 /// <summary>
 /// Called by Animation Event (AttackExecute) via PlayerAnimationEventRelay.

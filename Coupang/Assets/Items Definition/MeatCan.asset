@@ -15,9 +15,9 @@ MonoBehaviour:
   itemId: 1
   displayName: Meat Can
   icon: {fileID: 10901, guid: 0000000000000000f000000000000000, type: 0}
-  itemType: 2
   category: 1
   isCarrier: 0
+  carryKind: 0
   slotSize: 1
   weight: 3
   stackSize: {x: 0.37074694, y: 0.094646744, z: 0.2530015}

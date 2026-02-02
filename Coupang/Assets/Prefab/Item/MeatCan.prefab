@@ -151,8 +151,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   modeOverride: 1
-  gripR: {fileID: 4577713719830644302}
-  carryGrip: {fileID: 0}
+  gripPoint: {fileID: 4577713719830644302}
   handleA: {fileID: 0}
   handleB: {fileID: 0}
   moveSpeedMultiplier: 1
@@ -180,12 +179,29 @@ MonoBehaviour:
   currentDurability: 100
   enableImpactDamage: 1
   impactMinSpeed: 6
-  impactDamagePerUnit: 5
+  impactDamagePerUnit: 3
   rb: {fileID: 0}
   isOnCarrier: 0
   carrierOwner: {fileID: 0}
   carrierSlotIndex: -1
   carrierSlotPivot: {fileID: 0}
   ignoreContainerAutoParent: 0
+  pickupLocked: 0
   throwerRoot: {fileID: 0}
   ignoreThrowerBreakUntil: 0
+  ignoreTerrainDamageAfterThrow: 1
+  ignoreTerrainDamageSeconds: 0.12
+  terrainMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  ignoreTerrainDamageUntil: 0
+  clampImpactSpeed: 0
+  maxImpactSpeed: 25
+  enableThrowDamageToHealth: 1
+  throwDamageWindowSeconds: 2
+  consumeThrowDamageOnHit: 1
+  throwDamageTargetMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  throwDamageUntil: 0
+  throwDamageArmed: 0

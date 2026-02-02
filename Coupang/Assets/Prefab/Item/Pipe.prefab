@@ -88,7 +88,7 @@ MonoBehaviour:
   currentDurability: 100
   enableImpactDamage: 1
   impactMinSpeed: 6
-  impactDamagePerUnit: 5
+  impactDamagePerUnit: 3
   rb: {fileID: 0}
   isOnCarrier: 0
   carrierOwner: {fileID: 0}
@@ -98,6 +98,22 @@ MonoBehaviour:
   pickupLocked: 0
   throwerRoot: {fileID: 0}
   ignoreThrowerBreakUntil: 0
+  ignoreTerrainDamageAfterThrow: 1
+  ignoreTerrainDamageSeconds: 0.12
+  terrainMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  ignoreTerrainDamageUntil: 0
+  clampImpactSpeed: 0
+  maxImpactSpeed: 25
+  enableThrowDamageToHealth: 1
+  throwDamageWindowSeconds: 2
+  consumeThrowDamageOnHit: 1
+  throwDamageTargetMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  throwDamageUntil: 0
+  throwDamageArmed: 0
 --- !u!114 &3879426072185933385
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -190,12 +206,13 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 12544
   ignoreTriggers: 0
+  fallbackStart: {fileID: 0}
+  usePlayerDropOriginAsStart: 1
+  fallbackStartHeight: 1
   drawDamageGizmos: 1
+  drawGizmosAlways: 0
   useCameraAimForGizmosWhenHeld: 1
   drawOnlyWhenHeldByPlayer: 1
-  gizmoOrigin: {fileID: 0}
-  gizmoDirection: {fileID: 0}
-  drawGizmosAlways: 0
   drawDamageLabel: 1
   damageLabelText: 
 --- !u!1001 &8734527980881848388

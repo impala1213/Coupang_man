@@ -62,12 +62,17 @@ public class ItemDefinition : ScriptableObject
     [Header("World Prefab")]
     public GameObject worldPrefab;
 
-    [Header("Breakability")]
-    public bool breakable = false;
-    public float breakImpulseThreshold = 15f;
-    public GameObject brokenPrefab;
+    [Header("Break (Durability Only)")]
+[Tooltip("If true, when durability reaches 0 the item will use brokenPrefab (if set) and may deactivate instead of Destroy, depending on WorldItem.OnBroken.")]
+public bool breakable = false;
 
-    [Header("Economy (optional)")]
+[Tooltip("Spawned when durability reaches 0 (optional).")]
+public GameObject brokenPrefab;
+
+[HideInInspector, Tooltip("Deprecated. Instant-break by impulse is disabled. Kept only for legacy data.")]
+public float breakImpulseThreshold = 15f;
+
+[Header("Economy (optional)")]
     public int baseValue = 0;
 
     // Only based on carryKind (NOT slotSize)

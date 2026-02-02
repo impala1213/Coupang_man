@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 [RequireComponent(typeof(Health))]
 public class MushroomAI : MonoBehaviour
@@ -49,6 +49,12 @@ public class MushroomAI : MonoBehaviour
     [Header("Hit Reaction")]
     [Tooltip("Seconds to lock movement during hit animation.")]
     public float hitLockDuration = 0.4f;
+
+    [Tooltip("If true, taking damage will automatically trigger the Hit animation (via Health.OnDamaged).")]
+    public bool triggerHitOnDamaged = true;
+
+    [Tooltip("If true, additional damage while already in HitStun will not retrigger the Hit animation.")]
+    public bool ignoreHitsWhileStunned = true;
 
     [Header("Attack Lock")]
     [Tooltip("Freeze duration for the whole attack state (includes recovery). If <= 0, auto = attackStartDelay + sporeDuration.")]
@@ -117,6 +123,16 @@ public class MushroomAI : MonoBehaviour
         if (health != null)
         {
             health.OnDeath += OnDeath;
+            health.OnDamaged += OnDamaged; // ✅ Hit 트리거 연결
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (health != null)
+        {
+            health.OnDeath -= OnDeath;
+            health.OnDamaged -= OnDamaged;
         }
     }
 
@@ -319,8 +335,18 @@ public class MushroomAI : MonoBehaviour
     }
 
     // ----------------------------------------------------
-    // Hit reaction (call this when the mushroom takes damage)
+    // Hit reaction (auto-triggered when the mushroom takes damage)
     // ----------------------------------------------------
+    private void OnDamaged(Health h, int amount)
+    {
+        if (!triggerHitOnDamaged) return;
+        if (amount <= 0) return;
+        if (combatState == CombatState.Dead) return;
+        if (ignoreHitsWhileStunned && combatState == CombatState.HitStun) return;
+
+        TriggerHit();
+    }
+
     public void TriggerHit()
     {
         if (combatState == CombatState.Dead) return;
